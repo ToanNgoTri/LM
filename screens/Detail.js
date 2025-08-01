@@ -48,7 +48,7 @@ export default function Detail() {
         <KeyboardAvoidingView
           style={{flex: 1}}
           behavior="padding"
-          keyboardVerticalOffset={-insets.bottom / 2}
+          keyboardVerticalOffset={-38 - insets.bottom / 2 }
         >
           <Detail5 />
         </KeyboardAvoidingView>

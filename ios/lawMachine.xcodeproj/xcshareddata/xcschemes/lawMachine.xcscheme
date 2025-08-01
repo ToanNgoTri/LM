@@ -57,9 +57,18 @@
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
             BuildableName = "LM.app"
             BlueprintName = "LM"
-            ReferencedContainer = "container:LM.xcodeproj">
+            ReferencedContainer = "container:lawMachine.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+            BuildableName = "LM.app"
+            BlueprintName = "LM"
+            ReferencedContainer = "container:LM.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -77,6 +86,15 @@
             ReferencedContainer = "container:LM.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
+            BuildableName = "LM.app"
+            BlueprintName = "LM"
+            ReferencedContainer = "container:LM.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
