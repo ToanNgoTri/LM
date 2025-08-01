@@ -12,7 +12,8 @@ import {Detail2} from '../screens/Detail2';
 import Detail5 from '../screens/Detail';
 import {useNetInfo} from '@react-native-community/netinfo';
 import {
-  BoxInHomeScreen,RefOfHome
+  RefOfHome,
+  // BoxInHomeScreen
 } from '../App';
 import {
   Text,
@@ -29,7 +30,7 @@ const Tab = createMaterialTopTabNavigator();
 
 const AppNavigators = () => {
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
-  const BoxInHomeScreenStatus = useContext(BoxInHomeScreen);
+  // const BoxInHomeScreenStatus = useContext(BoxInHomeScreen);
   // const SearchLawScreen = useContext(RefOfSearchLaw);
   const HomeScreen = useContext(RefOfHome);
   // const SearchContentScreen = useContext(RefOfSearchContent);
@@ -96,24 +97,24 @@ const AppNavigators = () => {
 
   const animated = useRef(new Animated.Value(0)).current;
 
-  let translateY = animated.interpolate({
-    inputRange: [0, 100],
-    outputRange: [0, 100],
-  });
+  // let translateY = animated.interpolate({
+  //   inputRange: [0, 100],
+  //   outputRange: [0, 100],
+  // });
 
   let Opacity = animated.interpolate({
     inputRange: [0, 100],
     outputRange: [0.5, 0],
   });
 
-  useEffect(() => {
-    Animated.timing(animated, {
-      toValue: BoxInHomeScreenStatus.showBoxInHomeScreen ? 0 : 100,
-      // toValue:100,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  }, [BoxInHomeScreenStatus.showBoxInHomeScreen]);
+  // useEffect(() => {
+  //   Animated.timing(animated, {
+  //     toValue: BoxInHomeScreenStatus.showBoxInHomeScreen ? 0 : 100,
+  //     // toValue:100,
+  //     duration: 200,
+  //     useNativeDriver: false,
+  //   }).start();
+  // }, [BoxInHomeScreenStatus.showBoxInHomeScreen]);
 
   
   return (
@@ -121,9 +122,6 @@ const AppNavigators = () => {
       <Tab.Navigator
       backBehavior='none'
         tabBar={({navigation, state, descriptors, position}) => {
-          // console.log('state.index', state.index);
-          // console.log('position', position._a._value);
-
           if (state.index == position._a._value && state.index == 0 && HomeScreen.homeRef) {
             HomeScreen.homeRef.scrollToOffset({offset: 0});
           }else if(state.index == position._a._value && state.index == 1 && global.SearchLawRef){
@@ -199,7 +197,7 @@ const AppNavigators = () => {
                     <View
                       style={{
                         alignItems: 'center',
-                        transform: [{translateY: -2}],
+                        // transform: [{translateY: -2}],
                       }}>
                       <Animated.View
                         style={{
@@ -294,7 +292,7 @@ const AppNavigators = () => {
                     <View
                       style={{
                         alignItems: 'center',
-                        transform: [{translateY: -2}],
+                        // transform: [{translateY: -2}],
                       }}>
                       <Animated.View
                         style={{
@@ -392,7 +390,7 @@ const AppNavigators = () => {
                     <View
                       style={{
                         alignItems: 'center',
-                        transform: [{translateY: -2}],
+                        // transform: [{translateY: -2}],
                       }}>
                       <Animated.View
                         style={{
@@ -658,26 +656,6 @@ const AppNavigators = () => {
           }}
           listeners={{
             tabPress: props => {
-              // Animated.timing(animatedForHomeTab, {
-              //   toValue: 0,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
-
-              // Animated.timing(animatedForSearchLaw, {
-              //   toValue: 60,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
-
-              // Animated.timing(animatedForSearchContent, {
-              //   toValue: 0,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
             },
           }}
         />
@@ -686,122 +664,17 @@ const AppNavigators = () => {
           component={Detail1}
           options={{
             header: () => null,
-            // tabBarIcon: ({focused, color, size}) => {
-            //   return (
-            //     // <View
-            //     //   // style={true ? {...styles.tabItemActive,width:widthTab,height:(widthTab>heightTab?'108%':'104%')} : styles.tabItemInactive}
-            //     //   style={{alignItems: 'center', top: -5, minWidth: 100}}>
-            //     //   <Animated.View
-            //     //     style={{
-            //     //       width: searchContentRibbon,
-            //     //       height: 25,
-            //     //       borderRadius: 10,
-            //     //       backgroundColor: 'rgba(39,64,139,.6)',
-            //     //       position: 'absolute',
-            //     //     }}></Animated.View>
-            //     //   <Ionicons
-            //     //     name="search-outline"
-            //     //     style={
-            //     //       true ? styles.IconActive : styles.IconInActive
-            //     //     }></Ionicons>
-            //     //   <Text
-            //     //     style={{
-            //     //       ...(true ? styles.IconActive : styles.IconInActive),
-            //     //       fontSize: 13,
-            //     //       fontWeight: 'bold',
-            //     //     }}>
-            //     //     Tìm nội dung
-            //     //   </Text>
-            //     // </View>
-            //     <Animated.View
-            //       style={{
-            //         alignItems: 'center',
-            //         minWidth: 100,
-            //         // backgroundColor: 'red',
-            //         display: 'flex',
-            //         flexDirection: 'column',
-            //         overflow: 'hidden',
-            //         justifyContent: 'center',
-            //         position: 'relative',
-            //         height: 44,
-            //         top: -8,
-            //         transform: [{scale: searchContentTabIconSize}],
-            //       }}>
-
-            //       {true ? (
-            //         <View>
-            //                             <Animated.View
-            //       style={{
-            //         width: searchContentRibbon,
-            //         height: 29,
-            //         borderRadius: 10,
-            //         backgroundColor: 'rgba(39,64,139,.6)',
-            //         position: 'absolute',
-            //         transform: [{translateX: -16}],
-
-            //       }}></Animated.View>
-
-            //            <Ionicons
-            //           name="search"
-            //           style={styles.IconActive}></Ionicons>
-            //           </View>
-
-            //       ) : (
-            //         <Ionicons
-            //           name="search-outline"
-            //           style={styles.IconInActive}></Ionicons>
-            //       )}
-            //       <Animated.View
-            //         style={{
-            //           // height:homeTabTitleHeight,
-            //           // backgroundColor:'yellow',
-            //           padding: 0,
-            //           transform: [{scale: searchContentTabTitleHeight}],
-            //         }}>
-            //         <Text
-            //           style={{
-            //             ...(true ? styles.TextActive : styles.TextInActive),
-            //             fontSize: 13,
-            //             fontWeight: 'bold',
-            //             display: true ? 'none' : 'flex',
-            //           }}>
-            //           Tìm nội dung
-            //         </Text>
-            //       </Animated.View>
-            //     </Animated.View>
-            //   );
-            // },
             tabBarLabel: () => {
               return null;
             },
           }}
           listeners={{
             tabPress: props => {
-              // Animated.timing(animatedForHomeTab, {
-              //   toValue: 0,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
-
-              // Animated.timing(animatedForSearchLaw, {
-              //   toValue: 0,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
-
-              // Animated.timing(animatedForSearchContent, {
-              //   toValue: 60,
-              //   // toValue:100,
-              //   duration: 300,
-              //   useNativeDriver: false,
-              // }).start();
             },
           }}
         />
       </Tab.Navigator>
-      <Animated.View
+      {/* <Animated.View
         style={{
           backgroundColor: 'black',
           bottom: 0,
@@ -811,10 +684,10 @@ const AppNavigators = () => {
           position: 'absolute',
           zIndex: 1,
           opacity: Opacity,
-          transform: [{translateY: translateY}],
+          // transform: [{translateY: translateY}],
           borderTopLeftRadius: 15,
           borderTopRightRadius: 15,
-        }}></Animated.View>
+        }}></Animated.View> */}
     </View>
   );
 };

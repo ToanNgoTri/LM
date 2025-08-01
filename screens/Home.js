@@ -12,17 +12,18 @@ import {
   TouchableWithoutFeedback,
   Platform,
 } from 'react-native';
-import {useState, useEffect, useRef, useContext} from 'react';
-import {BoxInHomeScreen,RefOfHome} from '../App';
+import { useState, useEffect, useRef, useContext } from 'react';
+import { RefOfHome,
+  // BoxInHomeScreen
+ } from '../App';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import {Dirs, FileSystem} from 'react-native-file-access';
+import { Dirs, FileSystem } from 'react-native-file-access';
 // import {useScrollToTop} from '@react-navigation/native';
-import {useNavigation} from '@react-navigation/native';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DraggableFlatList, {
-  ScaleDecorator
+  ScaleDecorator,
 } from 'react-native-draggable-flatlist';
-// import {RefOfHome} from '../App'
 import VersionCheck from 'react-native-version-check';
 
 export default function Home({}) {
@@ -31,6 +32,9 @@ export default function Home({}) {
   const [updateStatus, SetUpdateStatus] = useState(false);
   const [Info, setInfo] = useState(false);
 
+  const [heightNotification, setHeightNotification] = useState(0)
+  console.log('heightNotification',heightNotification);
+  
   const [inputSearchLaw, setInputSearchLaw] = useState('');
   // const [searchLawResult, setSearchLawResult] = useState([]);
   const [showPolicy, setShowPolicy] = useState(false);
@@ -44,21 +48,17 @@ export default function Home({}) {
 
   // const ScrollViewToScroll = useRef(null);
 
-
-  const BoxInHomeScreenStatus = useContext(BoxInHomeScreen);
+  // const BoxInHomeScreenStatus = useContext(BoxInHomeScreen);
 
   const HomeScreen = useContext(RefOfHome);
 
   useEffect(() => {
-    if(ScrollViewToScroll.current){
-
+    if (ScrollViewToScroll.current) {
       HomeScreen.updateHomeRef(ScrollViewToScroll.current);
-    
     }
-  })
+  });
 
-  
-  const Render = ({item, i, drag, isActive}) => {
+  const Render = ({ item, i, drag, isActive }) => {
     return (
       <ScaleDecorator>
         <TouchableOpacity
@@ -78,8 +78,9 @@ export default function Home({}) {
             opacity: isActive ? 0.5 : 1,
           }}
           onPress={() =>
-            navigation.navigate(`accessLaw`, {screen: Object.keys(item)[0]})
-          }>
+            navigation.navigate(`accessLaw`, { screen: Object.keys(item)[0] })
+          }
+        >
           <View style={styles.item}>
             <Text
               style={{
@@ -89,7 +90,8 @@ export default function Home({}) {
                   Object.values(item)[0]['lawNameDisplay'].match(/^(Hiến)/gim)
                     ? 'yellow'
                     : 'white',
-              }}>
+              }}
+            >
               {/* {Info[item] && Info[item]['lawNameDisplay']} */}
               {Object.values(item)[0]['lawNameDisplay']}
             </Text>
@@ -97,7 +99,7 @@ export default function Home({}) {
               !Object.values(item)[0]['lawNameDisplay'].match(
                 /^(luật|bộ luật|hiến)/gim,
               ) && (
-                <Text style={{...styles.itemDescription}}>
+                <Text style={{ ...styles.itemDescription }}>
                   {/* {Info[item] && Info[item]['lawDescription']} */}
                   {'   '}
                   {Object.values(item)[0] &&
@@ -205,7 +207,7 @@ export default function Home({}) {
       }
     } else {
       setShowBackground(true);
-      return {order: {}};
+      return { order: {} };
     }
   }
 
@@ -251,26 +253,14 @@ export default function Home({}) {
     }
   }
 
-  //   async function log(){
-
-  //     const fileAppear = await FileSystem.readFile(
-  //       Dirs.CacheDir + '/Appear.txt',
-  //       'utf8',
-  //     );
-
-  //     let contentAppear = JSON.parse(fileAppear);
-
-  // console.log('contentAppear',contentAppear);
-  //   }
-
-  //   log()
-
   const checkForUpdate = async () => {
     // Lấy phiên bản hiện tại của ứng dụng
     const currentVersion = VersionCheck.getCurrentVersion();
 
     // Kiểm tra phiên bản mới nhất trên Google Play Store
-    const latestVersion = await VersionCheck.getLatestVersion({packageName: 'com.lawmachine'})
+    const latestVersion = await VersionCheck.getLatestVersion({
+      packageName: 'com.lawmachine',
+    });
 
     if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
       const fileAppear = await FileSystem.readFile(
@@ -279,10 +269,9 @@ export default function Home({}) {
       );
 
       let contentAppear = JSON.parse(fileAppear);
-      console.log('Number(latestVersion)',Number(latestVersion));
-      console.log('Number(currentVersion)',Number(currentVersion));
-      
-      
+      console.log('Number(latestVersion)', Number(latestVersion));
+      console.log('Number(currentVersion)', Number(currentVersion));
+
       if (Number(latestVersion) > Number(currentVersion)) {
         if (!contentAppear[latestVersion]) {
           SetUpdateStatus(true);
@@ -325,9 +314,9 @@ export default function Home({}) {
     checkForUpdate();
   }, []);
 
-  useEffect(() => {
-    BoxInHomeScreenStatus.updateShowBoxInHomeScreen(updateStatus || showPolicy);
-  }, [updateStatus, showPolicy]);
+  // useEffect(() => {
+  //   BoxInHomeScreenStatus.updateShowBoxInHomeScreen(updateStatus || showPolicy);
+  // }, [updateStatus, showPolicy]);
 
   const animated = useRef(new Animated.Value(0)).current;
 
@@ -358,8 +347,9 @@ export default function Home({}) {
   function NoneOfResult() {
     return (
       <TouchableWithoutFeedback
-        style={{backgroundColor: 'red'}}
-        onPress={() => Keyboard.dismiss()}>
+        style={{ backgroundColor: 'red' }}
+        onPress={() => Keyboard.dismiss()}
+      >
         <View
           style={{
             paddingBottom: 100,
@@ -368,8 +358,9 @@ export default function Home({}) {
             justifyContent: 'center',
             width: '100%',
             backgroundColor: '#EEEFE4',
-          }}>
-          <Text style={{fontSize: 40, textAlign: 'center', color: 'gray'}}>
+          }}
+        >
+          <Text style={{ fontSize: 40, textAlign: 'center', color: 'gray' }}>
             {' '}
             {Info.length ? '' : 'Chưa có văn bản tải xuống'}
           </Text>
@@ -379,7 +370,7 @@ export default function Home({}) {
   }
 
   // console.log('Info.length',Info.length);
-  
+
   return (
     <>
       <View
@@ -394,27 +385,30 @@ export default function Home({}) {
           justifyContent: 'space-between',
           // backgroundColor: 'red',
           flexDirection: 'column',
-        }}>
+        }}
+      >
         <View
           style={{
             backgroundColor: 'green',
             height: insets.top,
             width: '150%',
-          }}></View>
-        <View style={{flexDirection: 'row'}}>
+          }}
+        ></View>
+        <View style={{ flexDirection: 'row' }}>
           <View
             style={{
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'center',
             }}
-            >
+          >
             <Ionicons
               name="logo-buffer"
               style={{
                 color: 'green',
                 fontSize: 25,
-              }}></Ionicons>
+              }}
+            ></Ionicons>
           </View>
           <TextInput
             onChangeText={text => {
@@ -436,7 +430,8 @@ export default function Home({}) {
               }
             }}
             onFocus={() => setTextInputFocus(true)}
-            onBlur={() => setTextInputFocus(false)}></TextInput>
+            onBlur={() => setTextInputFocus(false)}
+          ></TextInput>
           <TouchableOpacity
             onPress={() => {
               setInputSearchLaw('');
@@ -448,7 +443,8 @@ export default function Home({}) {
               display: 'flex',
               // backgroundColor:'red',
               justifyContent: 'center',
-            }}>
+            }}
+          >
             {inputSearchLaw && (
               <Ionicons
                 name="close-circle-outline"
@@ -459,7 +455,8 @@ export default function Home({}) {
                   textAlign: 'right',
                   // backgroundColor:'black',
                   paddingRight: 10,
-                }}></Ionicons>
+                }}
+              ></Ionicons>
             )}
           </TouchableOpacity>
         </View>
@@ -476,7 +473,7 @@ export default function Home({}) {
             data={data}
             renderItem={Render}
             keyExtractor={item => Object.keys(item)[0]}
-            onDragEnd={({data}) => {
+            onDragEnd={({ data }) => {
               setData(data);
               sortedData(data);
             }}
@@ -486,13 +483,14 @@ export default function Home({}) {
                 style={{
                   height: 94 + insets.bottom / 2 + insets.top,
                   width: '100%',
-                }}></View>
+                }}
+              ></View>
             )}
           />
-          </View>
+        </View>
       )}
 
-      {(showPolicy || updateStatus) && (
+      {(showPolicy || updateStatus) && (  
         // {(true) && (
 
         <>
@@ -506,7 +504,8 @@ export default function Home({}) {
               display: 'flex',
               position: 'absolute',
               opacity: Opacity,
-            }}>
+            }}
+          >
             <TouchableOpacity //overlay
               style={{
                 left: 0,
@@ -515,21 +514,33 @@ export default function Home({}) {
                 bottom: 0,
                 display: 'flex',
                 position: 'absolute',
-              }}></TouchableOpacity>
+              }}
+            ></TouchableOpacity>
           </Animated.View>
 
           <Animated.View
+          onLayout={event => {
+                        event.target.measure(
+                          (x, y, width, height, pageX, pageY) => {
+                              setHeightNotification(height);
+                          },
+                        );
+                      }}
             style={{
               position: 'absolute',
-              top: updateStatus ? 200 : 80,
-              bottom: updateStatus ? 300 : 60,
-              minHeight: updateStatus ? 210 : 500,
+              // top: updateStatus ? 200 : 80,
+              // bottom: updateStatus ? 300 : 60,
+              // minHeight: updateStatus ? 210 : 500,
+
+              top:'50%',
+              maxHeight:updateStatus ? 500 : '75%',
+
               right: 50,
               left: 50,
               backgroundColor: 'white',
               display: 'flex',
               borderRadius: 20,
-              transform: [{scale: Scale}],
+              transform: [{ scale: Scale},{translateY:-heightNotification/2 }],
               overflow: 'hidden',
               shadowColor: 'black',
               shadowOpacity: 1,
@@ -539,16 +550,18 @@ export default function Home({}) {
               },
               shadowRadius: 4,
               elevation: 20,
-            }}>
-            {!updateStatus ? (
-              <ScrollView style={{}} showsVerticalScrollIndicator={false}>
-                <View style={{marginBottom: 20, marginTop: 30}}>
+            }}
+          >
+            {!updateStatus ? ( // updateStatus
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={{ marginBottom: 20, marginTop: 30 }}>
                   <Text
                     style={{
                       fontWeight: 'bold',
                       fontSize: 30,
                       textAlign: 'center',
-                    }}>
+                    }}
+                  >
                     Lời mở đầu{' '}
                   </Text>
                 </View>
@@ -561,7 +574,8 @@ export default function Home({}) {
                       paddingRight: 20,
                       textAlign: 'justify',
                       lineHeight: 23,
-                    }}>
+                    }}
+                  >
                     {'  '}Các thông tin, nội dung và dịch vụ mà Thư viện Luật
                     cung cấp chỉ mang tính chất tham khảo, với mục đích đem lại
                     cho người sử dụng những thông tin tổng quát về các quy định
@@ -582,7 +596,8 @@ export default function Home({}) {
                       paddingRight: 20,
                       textAlign: 'justify',
                       lineHeight: 23,
-                    }}>
+                    }}
+                  >
                     {'  '}Mặc dù đã cố gắng hạn chế những sai sót trong quá
                     trình nhập liệu và đăng tải, các thông tin, nội dung văn bản
                     pháp luật do Thư viện Luật cung cấp không tránh khỏi những
@@ -596,7 +611,7 @@ export default function Home({}) {
                     mà Thư viện Luật cung cấp
                   </Text>
                 </View>
-                <View style={{}}>
+                <View style={{paddingBottom:10}}>
                   <Text
                     style={{
                       fontWeight: 600,
@@ -604,7 +619,8 @@ export default function Home({}) {
                       paddingRight: 20,
                       textAlign: 'justify',
                       lineHeight: 23,
-                    }}>
+                    }}
+                  >
                     {'   '}Đây là ứng dụng tra cứu Luật của tập thể Pixel Places
                     Game xây dựng và phát triển. Ứng dụng không đại diện cho bất
                     kỳ cơ quan nào thuộc Chính phủ. Cuối cùng, xin chân thành
@@ -614,19 +630,20 @@ export default function Home({}) {
                 </View>
               </ScrollView>
             ) : (
-              <ScrollView style={{}} showsVerticalScrollIndicator={false}>
-                <View style={{marginBottom: 10, marginTop: 20}}>
+              <ScrollView showsVerticalScrollIndicator={false} >
+                <View style={{ marginBottom: 10, marginTop: 20 }}>
                   <Text
                     style={{
                       fontWeight: 'bold',
                       fontSize: 30,
                       textAlign: 'center',
-                    }}>
+                    }}
+                  >
                     Thông báo{' '}
                   </Text>
                 </View>
 
-                <View style={{}}>
+                <View style={{paddingBottom:10}}>
                   <Text
                     style={{
                       fontWeight: 600,
@@ -636,7 +653,8 @@ export default function Home({}) {
                       // lineHeight:23,
                       fontSize: 18,
                       textAlign: 'center',
-                    }}>
+                    }}
+                  >
                     Thư viện Luật đã có phiên bản mới. Bạn có thể cập nhật để sử
                     dụng những tiện ích mới.
                   </Text>
@@ -659,7 +677,7 @@ export default function Home({}) {
 
                   const addContent = await FileSystem.writeFile(
                     Dirs.CacheDir + '/Appear.txt',
-                    JSON.stringify({[currentVersion]: false}),
+                    JSON.stringify({ [currentVersion]: false }),
                     'utf8',
                   );
 
@@ -669,7 +687,8 @@ export default function Home({}) {
                     duration: 300,
                     useNativeDriver: false,
                   }).start();
-                }}>
+                }}
+              >
                 <Text
                   style={{
                     paddingBottom: 10,
@@ -678,12 +697,13 @@ export default function Home({}) {
                     color: 'white',
                     fontWeight: 'bold',
                     fontSize: 16,
-                  }}>
+                  }}
+                >
                   Chấp nhận chính sách và tiếp tục
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View style={{flexDirection: 'row', width: '100%'}}>
+              <View style={{ flexDirection: 'row', width: '100%' }}>
                 <TouchableOpacity
                   style={{
                     backgroundColor: 'green',
@@ -713,7 +733,8 @@ export default function Home({}) {
                         'https://play.google.com/store/apps/details?id=com.lawmachine&pcampaignid=web_share',
                       ).catch(err => console.error('Error opening URL: ', err));
                     }
-                  }}>
+                  }}
+                >
                   <Text
                     style={{
                       paddingBottom: 10,
@@ -722,7 +743,8 @@ export default function Home({}) {
                       color: 'white',
                       fontWeight: 'bold',
                       fontSize: 16,
-                    }}>
+                    }}
+                  >
                     Cập nhật
                   </Text>
                 </TouchableOpacity>
@@ -746,7 +768,8 @@ export default function Home({}) {
                       duration: 300,
                       useNativeDriver: false,
                     }).start();
-                  }}>
+                  }}
+                >
                   <Text
                     style={{
                       paddingBottom: 10,
@@ -755,7 +778,8 @@ export default function Home({}) {
                       color: 'white',
                       fontWeight: 'bold',
                       fontSize: 16,
-                    }}>
+                    }}
+                  >
                     Thoát
                   </Text>
                 </TouchableOpacity>
