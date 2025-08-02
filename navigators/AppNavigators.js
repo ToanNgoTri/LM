@@ -170,7 +170,7 @@ const AppNavigators = () => {
                   justifyContent: 'center',
                   position: 'relative',
                   height: 44,
-                  bottom: 5 + insets.bottom / 4,
+                  bottom: 7 + insets.bottom / 6,
                   transform: [{ scale: homeTabIconSize }, { translateX: 7 }],
                 }}
               >
@@ -276,7 +276,7 @@ const AppNavigators = () => {
                   justifyContent: 'center',
                   position: 'relative',
                   height: 44,
-                  bottom: 5 + insets.bottom / 4,
+                  bottom: 7 + insets.bottom / 6,
                   transform: [{ scale: searchLawTabIconSize }],
                 }}
               >
@@ -375,7 +375,7 @@ const AppNavigators = () => {
                 style={{
                   alignItems: 'center',
                   minWidth: 100,
-                  bottom: 5 + insets.bottom / 4,
+                  bottom: 7 + insets.bottom / 6,
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',
