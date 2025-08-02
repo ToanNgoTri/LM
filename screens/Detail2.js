@@ -24,7 +24,6 @@ import {Dirs, FileSystem} from 'react-native-file-access';
 
 export function Detail2({}) {
   const {loading5, info5} = useSelector(state => state['searchLawDescription']);
-  // console.log('info',info);
 
   const {loading3, info3} = useSelector(state => state['getlastedlaws']);
 
@@ -436,7 +435,7 @@ export function Detail2({}) {
           paddingBottom: 10,
           paddingTop: 10,
           justifyContent: 'center',
-          backgroundColor: i % 2 ? 'white' : '#DDDDDD', // #F9CC76
+          backgroundColor: (Object.keys(SearchResult).length >= 1 && !SearchResult.hasOwnProperty('_id') ) ? (i % 2 ? 'white' : '#DDDDDD') :'DDDDDD', // #F9CC76
           // marginBottom: 6,
         }}
         onPress={() => {
