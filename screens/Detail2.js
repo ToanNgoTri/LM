@@ -14,20 +14,22 @@ import {
 } from 'react-native';
 // import {handle2, searchLaw} from '../redux/fetchData';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import {useSelector, useDispatch} from 'react-redux';
-import {useNavigation} from '@react-navigation/native';
-import React, {useEffect, useState, useRef, useContext} from 'react';
-import {useNetInfo} from '@react-native-community/netinfo';
+import { useSelector, useDispatch } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useState, useRef, useContext } from 'react';
+import { useNetInfo } from '@react-native-community/netinfo';
 import CheckBox from 'react-native-check-box';
-import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {Dirs, FileSystem} from 'react-native-file-access';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Dirs, FileSystem } from 'react-native-file-access';
 
 export function Detail2({}) {
-  const {loading5, info5} = useSelector(state => state['searchLawDescription']);
+  const { loading5, info5 } = useSelector(
+    state => state['searchLawDescription'],
+  );
 
-  const {loading3, info3} = useSelector(state => state['getlastedlaws']);
+  const { loading3, info3 } = useSelector(state => state['getlastedlaws']);
 
-  const {loading4, result4} = useSelector(state => state['getCountLaw']);
+  const { loading4, result4 } = useSelector(state => state['getCountLaw']);
 
   const [input, setInput] = useState(false);
   const [valueInput, setValueInput] = useState('');
@@ -147,8 +149,9 @@ export function Detail2({}) {
               if (!i) {
                 return [
                   <Text
-                    style={i2.match(/aa/) ? {...styles.chapterText} : {}}
-                    key={`${i}xa`}>
+                    style={i2.match(/aa/) ? { ...styles.chapterText } : {}}
+                    key={`${i}xa`}
+                  >
                     {current}
                   </Text>,
                 ];
@@ -159,18 +162,18 @@ export function Detail2({}) {
                   <Text
                     style={
                       i2.match(/aa/)
-                        ? {...styles.chapterText, backgroundColor: 'yellow'}
-                        : {backgroundColor: 'yellow'}
+                        ? { ...styles.chapterText, backgroundColor: 'yellow' }
+                        : { backgroundColor: 'yellow' }
                     }
-                    key={`${i}gmi`}>
+                    key={`${i}gmi`}
+                  >
                     {inputRexgex[i - 1]}
                   </Text>
                 </React.Fragment>,
                 <Text
                   key={`${i}vvv`}
-                  style={
-                    i2.match(/aa/) ? {...styles.chapterText} : {}
-                  }>
+                  style={i2.match(/aa/) ? { ...styles.chapterText } : {}}
+                >
                   {current}
                 </Text>,
               );
@@ -180,18 +183,30 @@ export function Detail2({}) {
               <Text
                 style={
                   i2.match(/aa/)
-                    ? {textAlign: 'center'}
-                    : {textAlign: 'justify'}
-                }>
-                {'   '}{searchedPara}
+                    ? { textAlign: 'center' }
+                    : { textAlign: 'justify' }
+                }
+              >
+                {'   '}
+                {searchedPara}
               </Text>
             </View>
           );
         } else {
-          return <Text>{'   '}{para}</Text>;
+          return (
+            <Text>
+              {'   '}
+              {para}
+            </Text>
+          );
         }
       } else {
-          return <Text>{'   '}{para}</Text>;
+        return (
+          <Text>
+            {'   '}
+            {para}
+          </Text>
+        );
       }
 
       // }
@@ -286,19 +301,19 @@ export function Detail2({}) {
         setSearchResult(contentLastedLaw['lastedLaw']);
         setLawFilted(contentLastedLaw['lastedLaw']);
       } else {
-        dispatch({type: 'getlastedlaws'});
+        dispatch({ type: 'getlastedlaws' });
         // console.log(2);
       }
     } else {
       // console.log(3);
 
-      dispatch({type: 'getlastedlaws'});
+      dispatch({ type: 'getlastedlaws' });
     }
   }
 
   useEffect(() => {
     if (internetConnected == true && !info5) {
-      dispatch({type: 'getCountLaw'});
+      dispatch({ type: 'getCountLaw' });
     }
   }, [internetConnected]);
 
@@ -386,8 +401,9 @@ export function Detail2({}) {
   const NoneOfResutl = () => {
     return (
       <TouchableWithoutFeedback
-        style={{backgroundColor: 'red'}}
-        onPress={() => Keyboard.dismiss()}>
+        style={{ backgroundColor: 'red' }}
+        onPress={() => Keyboard.dismiss()}
+      >
         <View
           style={{
             height: '100%',
@@ -396,8 +412,9 @@ export function Detail2({}) {
             paddingBottom: 90,
             paddingLeft: 30,
             paddingRight: 30,
-          }}>
-          <Text style={{fontSize: 35, textAlign: 'center', color: 'gray'}}>
+          }}
+        >
+          <Text style={{ fontSize: 35, textAlign: 'center', color: 'gray' }}>
             Không có kết quả nào được tìm thấy
           </Text>
         </View>
@@ -413,18 +430,18 @@ export function Detail2({}) {
       setPaper(1);
     }
     if (FlatListToScroll.current) {
-      FlatListToScroll.current.scrollToOffset({offset: 0});
+      FlatListToScroll.current.scrollToOffset({ offset: 0 });
     }
     if (!input || input.match(/^(\s)*$/) || input.match(/^\W+$/)) {
       setWanring(true);
     } else {
-      dispatch({type: 'searchLawDescription', input: input});
+      dispatch({ type: 'searchLawDescription', input: input });
       setValueInput(input);
     }
     setChoosenKindLaw([0, 1, 2]);
   }
 
-  const Item = ({title}) => {
+  const Item = ({ title }) => {
     let detailId = title.item;
     let i = title.index;
 
@@ -435,13 +452,20 @@ export function Detail2({}) {
           paddingBottom: 10,
           paddingTop: 10,
           justifyContent: 'center',
-          backgroundColor: (Object.keys(SearchResult).length >= 1 && !SearchResult.hasOwnProperty('_id') ) ? (i % 2 ? 'white' : '#DDDDDD') :'DDDDDD', // #F9CC76
+          backgroundColor:
+            Object.keys(SearchResult).length >= 1 &&
+            !SearchResult.hasOwnProperty('_id')
+              ? i % 2
+                ? 'white'
+                : '#DDDDDD'
+              : 'DDDDDD', // #F9CC76
           // marginBottom: 6,
         }}
         onPress={() => {
           // navigation.navigate(`${detailInfo._id}`)
-          navigation.push(`accessLaw`, {screen: detailId});
-        }}>
+          navigation.push(`accessLaw`, { screen: detailId });
+        }}
+      >
         <View style={styles.item}>
           <Text style={styles.chapterText} key={`${i}a`}>
             {highlight(
@@ -492,13 +516,15 @@ export function Detail2({}) {
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 10,
-          }}>
+          }}
+        >
           <Text
             style={{
               color: 'white',
               marginBottom: 15,
               fontWeight: 'bold',
-            }}>
+            }}
+          >
             Vui lòng kiểm tra kết nối mạng ...
           </Text>
           <ActivityIndicator size="large" color="white"></ActivityIndicator>
@@ -511,18 +537,20 @@ export function Detail2({}) {
           paddingTop: insets.top,
           borderBottomWidth: 1,
           borderBottomColor: 'black',
-        }}>
+        }}
+      >
         <TouchableWithoutFeedback
           onPress={() => {
             Keyboard.dismiss();
             // if (FlatListToScroll.current) {
             //   FlatListToScroll.current.scrollToOffset({offset: 0});
             // }
-          }}>
+          }}
+        >
           <Text style={styles.titleText}>{`Tìm kiếm văn bản`}</Text>
         </TouchableWithoutFeedback>
-        <View style={{...styles.inputContainer, height: 52}}>
-          <View style={{...styles.containerBtb, paddingTop: 5}}>
+        <View style={{ ...styles.inputContainer, height: 52 }}>
+          <View style={{ ...styles.containerBtb, paddingTop: 5 }}>
             <TouchableOpacity
               style={{
                 ...styles.inputBtb,
@@ -537,10 +565,12 @@ export function Detail2({}) {
                   duration: 500,
                   useNativeDriver: false,
                 }).start();
-              }}>
+              }}
+            >
               <Ionicons
                 name="funnel-outline"
-                style={{...styles.inputBtbText, color: 'black'}}></Ionicons>
+                style={{ ...styles.inputBtbText, color: 'black' }}
+              ></Ionicons>
               <View
                 style={{
                   position: 'absolute',
@@ -552,7 +582,8 @@ export function Detail2({}) {
                   bottom: -10,
                   justifyContent: 'center',
                   alignItems: 'center',
-                }}>
+                }}
+              >
                 <Text
                   style={{
                     color: 'white',
@@ -566,7 +597,8 @@ export function Detail2({}) {
                     fontWeight: 'bold',
                     justifyContent: 'center',
                     alignItems: 'center',
-                  }}>
+                  }}
+                >
                   {choosenLaw.length}
                 </Text>
               </View>
@@ -578,7 +610,8 @@ export function Detail2({}) {
               flexDirection: 'column',
               width: '60%',
               // backgroundColor:'red'
-            }}>
+            }}
+          >
             <View
               style={{
                 position: 'relative',
@@ -588,10 +621,11 @@ export function Detail2({}) {
                 borderRadius: 15,
                 borderColor: warning ? '#FF4500' : 'none',
                 borderWidth: warning ? 1 : 0,
-              }}>
+              }}
+            >
               <TextInput
                 ref={textInput}
-                style={{...styles.inputArea}}
+                style={{ ...styles.inputArea }}
                 onChangeText={text => {
                   setInput(text);
                 }}
@@ -624,7 +658,8 @@ export function Detail2({}) {
                   justifyContent: 'center',
                   left: -3,
                   // backgroundColor:'yellow'
-                }}>
+                }}
+              >
                 {input && (
                   <Ionicons
                     name="close-circle-outline"
@@ -633,7 +668,8 @@ export function Detail2({}) {
                       fontSize: 20,
                       paddingRight: 8,
                       // textAlign:'right'
-                    }}></Ionicons>
+                    }}
+                  ></Ionicons>
                 )}
               </TouchableOpacity>
             </View>
@@ -644,11 +680,12 @@ export function Detail2({}) {
                 textAlign: 'center',
                 fontWeight: 'bold',
                 lineHeight: 14,
-              }}>
+              }}
+            >
               {warning ? 'Vui lòng nhập từ khóa hợp lệ' : ' '}
             </Text>
           </View>
-          <View style={{...styles.containerBtb, paddingTop: -5}}>
+          <View style={{ ...styles.containerBtb, paddingTop: -5 }}>
             <TouchableOpacity
               style={{
                 ...styles.inputBtb,
@@ -660,10 +697,12 @@ export function Detail2({}) {
               }}
               onPress={() => {
                 pressToSearch();
-              }}>
+              }}
+            >
               <Ionicons
                 name="search-outline"
-                style={styles.inputBtbText}></Ionicons>
+                style={styles.inputBtbText}
+              ></Ionicons>
             </TouchableOpacity>
           </View>
         </View>
@@ -674,7 +713,8 @@ export function Detail2({}) {
             alignItems: 'center',
             width: '100%',
             paddingBottom: 5,
-          }}>
+          }}
+        >
           {['Luật/Bộ Luật', 'Nghị định', 'Thông tư'].map((option, i) => {
             return (
               <TouchableOpacity
@@ -691,7 +731,8 @@ export function Detail2({}) {
                   alignItems: 'center',
                   flexDirection: 'row',
                   // width:75
-                }}>
+                }}
+              >
                 <CheckBox
                   onClick={() => {
                     if (choosenKindLaw.includes(i)) {
@@ -707,7 +748,7 @@ export function Detail2({}) {
                   uncheckedCheckBoxColor={'white'}
                   checkedCheckBoxColor={'white'}
                 />
-                <Text style={{fontSize: 13, color: 'white'}}>{option}</Text>
+                <Text style={{ fontSize: 13, color: 'white' }}>{option}</Text>
               </TouchableOpacity>
             );
           })}
@@ -725,58 +766,101 @@ export function Detail2({}) {
             onPress={async () => {
               Keyboard.dismiss();
               OrderDaySign();
-            }}>
+            }}
+          >
             <Ionicons
               name="swap-vertical-outline"
               style={{
                 ...styles.inputBtbText,
                 fontSize: 19,
                 color: 'black',
-              }}></Ionicons>
+              }}
+            ></Ionicons>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={{marginTop: 0, flex: 1, backgroundColor: '#EEEFE4'}}>
-        {loading4 ||
-          ((loading5 || loading3) && (
-            <TouchableOpacity
+      <View style={{ marginTop: 0, flex: 1, backgroundColor: '#EEEFE4' }}>
+        {(loading5 ) && (
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              opacity: 0.8,
+              backgroundColor: 'black',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 10,
+            }}
+            onPress={() => Keyboard.dismiss()}
+          >
+            <View
               style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                top: 0,
-                bottom: 0,
-                opacity: 0.8,
-                backgroundColor: 'black',
-                justifyContent: 'center',
-                alignItems: 'center',
-                zIndex: 10,
+                top: '-9%',
               }}
-              onPress={() => Keyboard.dismiss()}>
-              <View
+            >
+              <Text
                 style={{
-                  top: '-9%',
-                }}>
-                <Text
-                  style={{
-                    color: 'white',
-                    marginBottom: 15,
-                    fontWeight: 'bold',
-                  }}>
-                  {loading3
-                    ? 'Đang tải văn bản mới nhất ...'
-                    : 'Xin vui lòng đợi trong giây lát ...'}
-                </Text>
-                <ActivityIndicator
-                  size="large"
-                  color="white"></ActivityIndicator>
-              </View>
-            </TouchableOpacity>
-          ))}
+                  color: 'white',
+                  marginBottom: 15,
+                  fontWeight: 'bold',
+                }}
+              >
+                Xin vui lòng đợi trong giây lát ...
+              </Text>
+              <ActivityIndicator size="large" color="white"></ActivityIndicator>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {loading3 && (
+          <View
+            style={{
+              backgroundColor: 'black',
+              alignItems: 'center',
+              justifyContent: 'center',
+              display: 'flex',
+              paddingTop: 5,
+              paddingBottom: 5,
+            }}
+          >
+            <View
+              style={{
+                // backgroundColor: 'red',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ActivityIndicator
+                size="small"
+                color="white"
+                // style={{ backgroundColor: 'blue' }}
+              ></ActivityIndicator>
+
+              <Text
+                style={{
+                  color: 'white',
+                  // marginBottom: 15,
+                  fontWeight: 'bold',
+                  // backgroundColor: 'yellow',
+                  textAlign: 'center',
+                  display: 'flex',
+                  marginLeft: 10,
+                }}
+              >
+                Đang tải văn bản mới ...
+              </Text>
+            </View>
+          </View>
+        )}
 
         {info5 != null && info5.length == 0 ? (
-          <NoneOfResutl style={{backgroundColor: 'red'}} />
+          <NoneOfResutl style={{ backgroundColor: 'red' }} />
         ) : Object.keys(SearchResult).length || info3.length || info5 ? (
           <FlatList
             onScrollBeginDrag={() => Keyboard.dismiss()}
@@ -796,11 +880,13 @@ export function Detail2({}) {
                 <>
                   <ActivityIndicator color="black" />
                   <View
-                    style={{height: 50 + insets.bottom / 2, width: 10}}></View>
+                    style={{ height: 50 + insets.bottom / 2, width: 10 }}
+                  ></View>
                 </>
               ) : (
                 <View
-                  style={{height: 50 + insets.bottom / 2, width: 10}}></View>
+                  style={{ height: 50 + insets.bottom / 2, width: 10 }}
+                ></View>
               )
             }
           />
@@ -821,7 +907,8 @@ export function Detail2({}) {
               display: 'flex',
               position: 'absolute',
               opacity: Opacity,
-            }}>
+            }}
+          >
             <TouchableOpacity //overlay
               style={{
                 left: 0,
@@ -843,7 +930,8 @@ export function Detail2({}) {
                   duration: 300,
                   useNativeDriver: false,
                 }).start();
-              }}></TouchableOpacity>
+              }}
+            ></TouchableOpacity>
           </Animated.View>
 
           <Animated.View
@@ -857,7 +945,7 @@ export function Detail2({}) {
               backgroundColor: 'white',
               display: 'flex',
               borderRadius: 20,
-              transform: [{scale: Scale}],
+              transform: [{ scale: Scale }],
               overflow: 'hidden',
               shadowColor: 'black',
               shadowOpacity: 1,
@@ -869,13 +957,15 @@ export function Detail2({}) {
               elevation: 20,
               // borderWidth:1,
               // borderColor:'#363636',
-            }}>
+            }}
+          >
             <View
               style={{
                 flexDirection: 'row',
                 backgroundColor: 'black',
                 height: 50,
-              }}>
+              }}
+            >
               <TextInput
                 onChangeText={text => setInputFilter(text)}
                 // ref={textInputForFilter}
@@ -906,7 +996,8 @@ export function Detail2({}) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                }}>
+                }}
+              >
                 {inputFilter && (
                   <Text
                     style={{
@@ -917,7 +1008,8 @@ export function Detail2({}) {
                       verticalAlign: 'middle',
                       backgroundColor: 'gray',
                       borderRadius: 25,
-                    }}>
+                    }}
+                  >
                     X
                   </Text>
                 )}
@@ -951,7 +1043,8 @@ export function Detail2({}) {
                   setChoosenLaw(Object.keys(SearchResult));
                   setCheckedAllFilter(true);
                 }
-              }}>
+              }}
+            >
               <CheckBox
                 onClick={() => {
                   if (choosenLaw.length == Object.keys(SearchResult).length) {
@@ -971,7 +1064,8 @@ export function Detail2({}) {
                   fontWeight: 'bold',
                   marginLeft: 5,
                   // backgroundColor:'green'
-                }}>
+                }}
+              >
                 Tất cả
               </Text>
             </TouchableOpacity>
@@ -984,7 +1078,8 @@ export function Detail2({}) {
                   paddingRight: '5%',
                   display: 'flex',
                   // flexDirection:'row'
-                }}>
+                }}
+              >
                 {SearchResult &&
                   Object.keys(SearchResult).map((key, i) => {
                     let nameLaw = SearchResult[key]['lawNameDisplay'];
@@ -1053,7 +1148,8 @@ export function Detail2({}) {
                                 setCheckedAllFilter(true);
                               }
                             }
-                          }}>
+                          }}
+                        >
                           <CheckBox
                             onClick={() => {
                               if (key == undefined) {
@@ -1076,7 +1172,7 @@ export function Detail2({}) {
                             style={{}}
                           />
 
-                          <Text style={{marginLeft: 5, color: 'black'}}>
+                          <Text style={{ marginLeft: 5, color: 'black' }}>
                             {nameLaw}
                           </Text>
                         </TouchableOpacity>
@@ -1104,9 +1200,10 @@ export function Detail2({}) {
                 }).start();
                 setPaper(1);
                 if (FlatListToScroll.current) {
-                  FlatListToScroll.current.scrollToOffset({offset: 0});
+                  FlatListToScroll.current.scrollToOffset({ offset: 0 });
                 }
-              }}>
+              }}
+            >
               <Text
                 style={{
                   paddingBottom: 10,
@@ -1115,7 +1212,8 @@ export function Detail2({}) {
                   color: 'white',
                   fontWeight: 'bold',
                   fontSize: 16,
-                }}>
+                }}
+              >
                 OK
               </Text>
             </TouchableOpacity>
