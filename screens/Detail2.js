@@ -58,6 +58,7 @@ export function Detail2({}) {
 
   const [dotCount, setDotCount] = useState(1);
 
+
   const navigation = useNavigation();
 
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
@@ -229,15 +230,6 @@ export function Detail2({}) {
   }
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDotCount(prev => (prev < 4 ? prev + 1 : 1));
-    }, 500); // 500ms mỗi lần thay đổi
-
-    return () => clearInterval(interval);
-  }, [loading3]);
-
-
-  useEffect(() => {
     if (info5) {
       setSearchResult(convertResult(info5));
       setLawFilted(convertResult(info5));
@@ -333,6 +325,17 @@ export function Detail2({}) {
       checkLastedLaw();
     }
   }, [result4]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDotCount(prev => (prev < 3 ? prev + 1 : 1));
+    }, 500); // 500ms mỗi lần thay đổi
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const renderDots = '.'.repeat(dotCount);
+
 
   async function getContentExist() {
     if (await FileSystem.exists(Dirs.CacheDir + '/lastedLaw.txt', 'utf8')) {
@@ -864,7 +867,7 @@ export function Detail2({}) {
                   marginLeft: 10,
                 }}
               >
-                Đang tải văn bản mới {'.'.repeat(dotCount)}
+                Đang tải văn bản mới {renderDots}
               </Text>
             </View>
           </View>
