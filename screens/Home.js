@@ -4,7 +4,6 @@ import {
   TouchableOpacity,
   View,
   TextInput,
-  FlatList,
   Keyboard,
   Animated,
   ScrollView,

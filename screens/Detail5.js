@@ -392,16 +392,32 @@ export function Detail5() {
   let searchResultCount = 0;
   // let c = 0;
   function highlight(para, word, article) {
-    // console.log('para',para);
-    if (para[0][[0]]) {
-      // đôi khi Điều ... không có khoản (nội dung chính trong điều) thì điều này giúp không load ['']
-      if (word.match(/(\w+|\(|\)|\.|\+|\-|\,|\&|\?|\;|\!|\/)/gim)) {
-        let inputRexgex = para[0].match(new RegExp(String(word), 'igmu'));
-        // let inputRexgex = para[0].match(new RegExp('hội', 'igmu'));
-        if (inputRexgex) {
-          searchResultCount += inputRexgex.length;
-          let searchedPara = para[0]
-            .split(new RegExp(String(word), 'igmu'))
+    // Chuẩn hóa đầu vào về chuỗi để tránh trả về object cho <Text>
+    const raw = para && para[0];
+    if (raw === undefined || raw === null) {
+      return '';
+    }
+
+    let text;
+    if (typeof raw === 'string') {
+      text = raw;
+    } else if (Array.isArray(raw)) {
+      text = raw.join(' ');
+    } else if (typeof raw === 'object') {
+      const firstKey = Object.keys(raw)[0];
+      text = typeof firstKey === 'string' ? firstKey : JSON.stringify(raw);
+    } else {
+      text = String(raw);
+    }
+
+    // đôi khi Điều ... không có khoản (nội dung chính trong điều) thì điều này giúp không load ['']
+    if (word.match(/(\w+|\(|\)|\.|\+|\-|\,|\&|\?|\;|\!|\/)/gim)) {
+      let inputRexgex = text.match(new RegExp(String(word), 'igmu'));
+      // let inputRexgex = text.match(new RegExp('hội', 'igmu'));
+      if (inputRexgex) {
+        searchResultCount += inputRexgex.length;
+        let searchedPara = text
+          .split(new RegExp(String(word), 'igmu'))
             // .split(new RegExp('hội', 'igmu'))
             .reduce((prev, current, i) => {
               if (!i) {
@@ -515,21 +531,18 @@ export function Detail5() {
                 </Text>,
               );
             }, []);
-          return (
-            <View>
-              <Text style={{ textAlign: 'justify' }}>{searchedPara}</Text>
-            </View>
-          );
-          // return <View >{searchedPara}</View>;
-          // return <Text >{searchedPara}</Text>;
-        } else {
-          return para[0];
-        }
+        return (
+          <View>
+            <Text style={{ textAlign: 'justify' }}>{searchedPara}</Text>
+          </View>
+        );
+        // return <View >{searchedPara}</View>;
+        // return <Text >{searchedPara}</Text>;
       } else {
-        return para[0];
+        return text;
       }
-
-      // }
+    } else {
+      return text;
     }
   }
 
@@ -692,7 +705,8 @@ export function Detail5() {
 
   const a = (key, i, key1, i1a, t) => {
     // phần nếu có mục 'chương' trong văn bản
-
+    console.log('a');
+  onlyArticle = false;
     return Object.keys(key)[0] != '0' ? (
       <View
         style={
@@ -717,9 +731,13 @@ export function Detail5() {
                   });
                 }}
               >
-                <Text style={{ ...styles.dieu }}>
+                {
+                  Object.keys(key2) == " " || 
+                  <Text style={{ ...styles.dieu }}>
                   {highlight(Object.keys(key2), valueInput, true)}
                 </Text>
+                }
+                
                 <Text style={{ ...styles.lines }}>
                   {highlight(Object.values(key2), valueInput, false)}
                 </Text>
@@ -735,6 +753,9 @@ export function Detail5() {
 
   const b = (keyA, i, keyB) => {
     // phần nếu có mục 'phần' trong văn bản
+  onlyArticle = false;
+    console.log('b');
+    
     return (
       <View
       // key={`${i}b`}
@@ -743,7 +764,7 @@ export function Detail5() {
           // keyC ra object là từng chương hoặc ra điều luôn
 
           let chapterOrdinal = 0;
-          if (Object.keys(keyC)[0].match(/^Chương.*$/gim)) {
+          if (Object.keys(keyC)[0].match(/(^Chương.*$|^(V|I|X)*\.)/gim)) {
             //nếu có chương
 
             sumChapterArray[i + 1] = keyA[keyB].length ? keyA[keyB].length : 0;
@@ -826,10 +847,11 @@ export function Detail5() {
     );
   };
 
-  let onlyArticle = false; // dùng để hiển thị collapse và expand
+  let onlyArticle = true; // dùng để hiển thị collapse và expand
   const c = (key, i, ObjKeys) => {
     // phần nếu chỉ có Điều ...
-    onlyArticle = true;
+    // onlyArticle = true;
+    console.log('c');
 
     return Object.keys(key)[0] != '0' ? (
       <View key={`${i}c`}>
@@ -855,6 +877,37 @@ export function Detail5() {
       <View key={`${i}c1`}></View>
     );
   };
+
+  const d = (key, i, ObjKeys) => {
+    // phần nếu chỉ có Điều ...
+    // onlyArticle = true;
+    console.log('d');
+
+    return Object.keys(key)[0] != '0' ? (
+      <View key={`${i}c`}>
+        <View
+          onLayout={event => {
+            event.target.measure((x, y, width, height, pageX, pageY) => {
+              setPositionYArtical({
+                y: y + pageY,
+                key3: ObjKeys,
+              });
+            });
+          }}
+        >
+          {/* <Text style={styles.dieu}>
+            {highlight([ObjKeys], valueInput, true)}
+          </Text> */}
+          <Text style={styles.lines}>
+            {"     "}{highlight([key[ObjKeys]], valueInput, false).replace(/\n/img,"\n    ")}
+          </Text>
+        </View>
+      </View>
+    ) : (
+      <View key={`${i}c1`}></View>
+    );
+  };
+
 
   return (
     <View style={{ flex: 1, position: 'relative' }}>
@@ -991,9 +1044,11 @@ export function Detail5() {
                       if (i + 1 == Content.length) {
                         // dispatch(noLoading())
                       }
+                      // console.log('key',key);
+                      
                       return (
                         <View key={`${i}Main`}>
-                          {!Object.keys(key)[0].match(/^(Điều|Điều)/gim) && (
+                          {(Object.keys(key)[0].match(/^(phần thứ .*)|^chương .*/gim) || Object.keys(key)[0].match(/^(V|I|X|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z)*\./) ) && (
                             <TouchableOpacity
                               // key={`${i}qq`}
                               style={styles.chapter}
@@ -1016,13 +1071,14 @@ export function Detail5() {
                               </Text>
                             </TouchableOpacity>
                           )}
-                          {Object.keys(key)[0].match(/^phần thứ .*/gim)
+                          { (Object.keys(key)[0].match(/^phần thứ .*/gim) || Object.keys(key)[0].match(/^(A|B|C|D|E|F|G|H)\./) )
                             ? b(key, i, Object.keys(key)[0])
-                            : Object.keys(key)[0].match(/^chương .*/gim)
+                            : Object.keys(key)[0].match(/(^chương .*|^(V|I|X)*\.)/gim)
                             ? a(key, i, Object.keys(key)[0])
-                            : Object.keys(key)[0].match(/^điều .*/gim)
-                            ? c(key, i, Object.keys(key)[0])
-                            : ''}
+                            : !Object.keys(key)[0].match(/^(Câu |Điều )?\d+(\.\d+)*(\.|:)(.*)$/gim)
+                            ? d(key, i, Object.keys(key)[0])
+                            : c(key, i, Object.keys(key)[0])
+                            }
                         </View>
                       );
                     })}
@@ -1148,27 +1204,30 @@ export function Detail5() {
                     </View>
                     {(SearchArticalResult || positionYArrArtical).map(
                       (key, i) => {
-                        return (
-                          <TouchableOpacity
-                            key={`${i}SearchArtical`}
-                            style={styles.listItem}
-                            onPress={() => {
-                              setShowArticle(false);
-                              list.current.scrollTo({
-                                y: Object.values(key) - 55,
-                              });
-                              Animated.timing(animatedForNavi, {
-                                toValue: !showArticle ? -100 : 0,
-                                duration: 600,
-                                useNativeDriver: false,
-                              }).start();
-                            }}
-                          >
-                            <Text style={styles.listItemText}>
-                              {Object.keys(key)}
-                            </Text>
-                          </TouchableOpacity>
-                        );
+                        if(Object.keys(key) != " "){
+                          return (
+                            <TouchableOpacity
+                              key={`${i}SearchArtical`}
+                              style={styles.listItem}
+                              onPress={() => {
+                                setShowArticle(false);
+                                list.current.scrollTo({
+                                  y: Object.values(key) - 55,
+                                });
+                                Animated.timing(animatedForNavi, {
+                                  toValue: !showArticle ? -100 : 0,
+                                  duration: 600,
+                                  useNativeDriver: false,
+                                }).start();
+                              }}
+                            >
+                              <Text style={styles.listItemText}>
+                                {Object.keys(key)}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+  
+                        }
                       },
                     )}
                   </ScrollView>
@@ -1728,21 +1787,20 @@ export function Detail5() {
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.ModalInfoContainer}>
-                    <View style={{ width: '40%' }}>
-                      <Text style={styles.ModalInfoTitle}>
-                        Ngày có hiệu lực:
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.ModalInfoContent}>
-                        {Info &&
-                          new Date(Info['lawDayActive']).toLocaleDateString(
-                            'vi-VN',
-                          )}
-                      </Text>
-                    </View>
-                  </View>
+                  {Info['lawDayActive'] &&
+                 <View style={styles.ModalInfoContainer}>
+                 <View style={{ width: '40%' }}>
+                   <Text style={styles.ModalInfoTitle}>
+                     Ngày có hiệu lực:
+                   </Text>
+                 </View>
+                 <View style={{ flex: 1 }}>
+                   <Text style={styles.ModalInfoContent}>
+                     {Info && new Date(Info['lawDayActive']).toLocaleDateString('vi-VN',) }
+                   </Text>
+                 </View>
+               </View> }
+                  
                   {Info['lawNumber'] && (
                     <View style={styles.ModalInfoContainer}>
                       <View style={{ width: '40%' }}>

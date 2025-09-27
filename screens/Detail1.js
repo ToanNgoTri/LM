@@ -41,6 +41,10 @@ export function Detail1({}) {
 
   // const [article, setArticle] = useState(); // dùng để collapse (thu thập key của các 'điều')
   // const [articleArray, setArticleArray] = useState([]); // arrray của các 'điều' đã expand
+  const [textInputFocus, setTextInputFocus] = useState(false);
+
+  const [textInputFilterFocus, setTextInputFilterFocus] = useState(false);
+
 
   const [choosenLaw, setChoosenLaw] = useState([]);
   const [LawFilted, setLawFilted] = useState(false);
@@ -50,6 +54,7 @@ export function Detail1({}) {
   const [warning, setWanring] = useState(false);
 
   const textInput = useRef(null);
+  const textInputFilter = useRef(null);
 
   const FlatListToScroll = useRef(null);
 
@@ -203,6 +208,21 @@ export function Detail1({}) {
     }
   }
 
+    function pressToSearch() {
+    Keyboard.dismiss();
+    setPaper(1);
+    if (FlatListToScroll.current) {
+      FlatListToScroll.current.scrollToOffset({offset: 0});
+    }
+    Keyboard.dismiss();
+    if (!input || input.match(/^(\s)*$/)) {
+      setWanring(true);
+    } else {
+      dispatch({type: 'searchContent', input: input});
+    }
+    setInputForNavi(input);  }
+
+
   useEffect(() => {
     setWanring(false);
   }, [input]);
@@ -297,18 +317,123 @@ export function Detail1({}) {
     );
   };
 
+  // const ItemForFilter = ({ data }) => {
+  //   // console.log(data.item);
+  //   // console.log(SearchResult);
+    
+  //   let nameLaw = SearchResult[data.item]['lawNameDisplay'];
+  //   let lawDescription = SearchResult[data.item]['lawDescription'];
+  
+  //   let inputSearchLawReg = inputFilter;
+  //   if (
+  //     inputFilter.match(
+  //       /(\w+|\(|\)|\.|\+|\-|\,|\&|\?|\;|\!|\/|\s?)/gim,
+  //     )
+  //   ) {
+  //     inputSearchLawReg = inputFilter.replace(/\(/gim, '\\(');
+  
+  //     inputSearchLawReg = inputSearchLawReg.replace(
+  //       /\)/gim,
+  //       '\\)',
+  //     );
+  
+  //     inputSearchLawReg = inputSearchLawReg.replace(
+  //       /\\/gim,
+  //       '.',
+  //     );
+  
+  //     inputSearchLawReg = inputSearchLawReg.replace(
+  //       /\./gim,
+  //       '\\.',
+  //     );
+  
+  //     inputSearchLawReg = inputSearchLawReg.replace(
+  //       /\+/gim,
+  //       '\\+',
+  //     );
+  
+  //     inputSearchLawReg = inputSearchLawReg.replace(
+  //       /\?/gim,
+  //       '\\?',
+  //     );
+  //   }
+  //   if (
+  //     nameLaw.match(new RegExp(inputSearchLawReg, 'igm')) ||
+  //     lawDescription.match(new RegExp(inputSearchLawReg, 'igm'))
+  //   ) {
+  //     return (
+  //       <TouchableOpacity
+  //         key={`${data.item}b`}
+  //         style={{
+  //           display: 'flex',
+  //           flexDirection: 'row',
+  //           paddingBottom: 10,
+  //           width: '90%',
+  //           alignItems: 'center',
+  //           backgroundColor:'red'
+  //         }}
+  //         onPress={() => {
+  //           // console.log('touch');
+
+  //           if (data.item == undefined) {
+  //           } else if (choosenLaw.includes(data.item)) {
+  //             setChoosenLaw(
+  //               choosenLaw.filter(a1 => a1 !== data.item),
+  //               setCheckedAllFilter(false),
+  //             );
+  //           } else {
+  //             setChoosenLaw([...choosenLaw, data.item]);
+  //             if (
+  //               choosenLaw.length ==
+  //               Object.keys(SearchResult).length - 1
+  //             ) {
+  //               setCheckedAllFilter(true);
+  //             }
+  //           }
+  //         }}
+  //       >
+  //         <CheckBox
+  //           onClick={() => {
+  //             if (data.item == undefined) {
+  //             } else if (choosenLaw.includes(data.item)) {
+  //               setChoosenLaw(
+  //                 choosenLaw.filter(a1 => a1 !== data.item),
+  //               );
+  //               setCheckedAllFilter(false);
+  //             } else {
+  //               setChoosenLaw([...choosenLaw, data.item]);
+  //               if (
+  //                 choosenLaw.length ==
+  //                 Object.keys(SearchResult).length - 1
+  //               ) {
+  //                 setCheckedAllFilter(true);
+  //               }
+  //             }
+  //           }}
+  //           isChecked={choosenLaw.includes(data.item)}
+  //         />
+  
+  //         <Text style={{ marginLeft: 5, color: 'black' }}>
+  //           {nameLaw}
+  //         </Text>
+  //       </TouchableOpacity>
+  //     );
+  //   }
+  // }
+
+  
   function convertResultLoading(obj) {
-    const first10Entries = Object.entries(obj).slice(0, paper * 10);
+    const first30Entries = Object.entries(obj).slice(0, paper * 30);
     // console.log(first10Entries.length);
 
     // Chuyển lại array thành object
-    const first10Obj = Object.fromEntries(first10Entries);
+    const first30Obj = Object.fromEntries(first30Entries);
 
-    return first10Obj;
+    return first30Obj;
   }
 
   function loadMoreData() {
-    if (paper < Math.ceil(Object.keys(SearchResult).length / 10)) {
+    if (paper < Math.ceil(Object.keys(SearchResult).length / 30)) {
       setPaper(paper + 1);
     }
   }
@@ -436,17 +561,7 @@ export function Detail1({}) {
                 placeholder="Nhập từ khóa..."
                 placeholderTextColor={'gray'}
                 onSubmitEditing={() => {
-                  setPaper(1);
-                  if (FlatListToScroll.current) {
-                    FlatListToScroll.current.scrollToOffset({offset: 0});
-                  }
-                  Keyboard.dismiss();
-                  if (!input || input.match(/^(\s)*$/)) {
-                    setWanring(true);
-                  } else {
-                    dispatch({type: 'searchContent', input: input});
-                  }
-                  setInputForNavi(input);
+                  pressToSearch()
                 }}
                 // onTouchEnd={() => {
                 //   if (textInputFocus) {
@@ -457,6 +572,8 @@ export function Detail1({}) {
                 //     textInput.current.focus();
                 //   }
                 // }}
+                onFocus={() => setTextInputFocus(true)}
+                onBlur={() => setTextInputFocus(false)}
               ></TextInput>
               <TouchableOpacity
                 onPress={() => {
@@ -509,17 +626,7 @@ export function Detail1({}) {
                 minWidth: 40,
               }}
               onPress={() => {
-                setPaper(1);
-                if (FlatListToScroll.current) {
-                  FlatListToScroll.current.scrollToOffset({offset: 0});
-                }
-                Keyboard.dismiss();
-                if (!input || input.match(/^(\s)*$/)) {
-                  setWanring(true);
-                } else {
-                  dispatch({type: 'searchContent', input: input});
-                }
-                setInputForNavi(input);
+                pressToSearch()
               }}>
               <Ionicons
                 name="search-outline"
@@ -732,7 +839,7 @@ export function Detail1({}) {
                 height: 50,
               }}>
               <TextInput
-                // ref={textInputForFilter}
+                ref={textInputFilter}
                 onChangeText={text => setInputFilter(text)}
                 value={inputFilter}
                 style={{
@@ -744,15 +851,17 @@ export function Detail1({}) {
                 }}
                 placeholder=" Nhập để tìm kiếm ..."
                 placeholderTextColor={'gray'}
-                // onTouchEnd={() => {
-                //   if (textInputFocusForFilter) {
-                //     textInputForFilter.current.blur();
-                //     setTextInputFocusForFilter(false);
-                //   } else {
-                //     setTextInputFocusForFilter(true);
-                //     textInputForFilter.current.focus();
-                //   }
-                // }}
+                onTouchEnd={() => {
+                  if (textInputFilterFocus) {
+                    textInputFilter.current.blur();
+                    setTextInputFilterFocus(false);
+                  } else {
+                    setTextInputFilterFocus(true);
+                    textInputFilter.current.focus();
+                  }
+                }}
+                onFocus={() => setTextInputFilterFocus(true)}
+                onBlur={() => setTextInputFilterFocus(false)}
               ></TextInput>
               <TouchableOpacity
                 onPress={() => setInputFilter('')}
@@ -940,6 +1049,21 @@ export function Detail1({}) {
                   })}
               </View>
             </ScrollView>
+
+
+{/* <FlatList
+              onScrollBeginDrag={() => Keyboard.dismiss()}
+              data={Object.keys(SearchResult)}
+              renderItem={(item) => <ItemForFilter data={item}  />}
+              style={{
+                  paddingTop: 10,
+                  paddingLeft: '10%',
+                  paddingRight: '5%',
+                  display: 'flex',
+                  // flexDirection:'row'
+              }}
+            /> */}
+
             <TouchableOpacity
               style={{
                 backgroundColor: 'green',

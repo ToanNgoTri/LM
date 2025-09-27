@@ -58,12 +58,16 @@ export function Detail2({}) {
 
   const [dotCount, setDotCount] = useState(1);
 
+  const [textInputFocus, setTextInputFocus] = useState(false);
+
+  const [textInputFilterFocus, setTextInputFilterFocus] = useState(false);
 
   const navigation = useNavigation();
 
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
 
   const textInput = useRef(null);
+  const textInputFilter = useRef(null);
   // const textInputForFilter = useRef(null);
 
   const FlatListToScroll = useRef(null);
@@ -101,15 +105,15 @@ export function Detail2({}) {
       Dirs.CacheDir + '/lastedLaw.txt',
       JSON.stringify({
         currentCountLaw: result4,
-        lastedLaw: convertResult(info3.slice(0, 30)),
+        lastedLaw: convertResult(info3.slice(0, 50)),
       }),
       'utf8',
     );
   }
   useEffect(() => {
     if (info3.length) {
-      setSearchResult(convertResult(info3.slice(0, 30)));
-      setLawFilted(convertResult(info3.slice(0, 30)));
+      setSearchResult(convertResult(info3.slice(0, 50)));
+      setLawFilted(convertResult(info3.slice(0, 50)));
       storeLastedLaw();
       // console.log('info3',info3);
     }
@@ -507,12 +511,12 @@ export function Detail2({}) {
   }
 
   function convertResultLoading(obj) {
-    const first10Entries = Object.entries(obj).slice(0, paper * 30);
+    const first30Entries = Object.entries(obj).slice(0, paper * 30);
 
     // Chuyển lại array thành object
-    const first10Obj = Object.fromEntries(first10Entries);
+    const first30Obj = Object.fromEntries(first30Entries);
 
-    return first10Obj;
+    return first30Obj;
   }
 
   return (
@@ -659,7 +663,9 @@ export function Detail2({}) {
                 //     textInput.current.focus();
                 //   }
                 // }}
-              ></TextInput>
+                onFocus={() => setTextInputFocus(true)}
+                onBlur={() => setTextInputFocus(false)}
+                  ></TextInput>
               <TouchableOpacity
                 onPress={() => {
                   setInput('');
@@ -982,7 +988,7 @@ export function Detail2({}) {
             >
               <TextInput
                 onChangeText={text => setInputFilter(text)}
-                // ref={textInputForFilter}
+                ref={textInputFilter}
                 value={inputFilter}
                 style={{
                   paddingLeft: 10,
@@ -993,16 +999,18 @@ export function Detail2({}) {
                 }}
                 placeholder=" Nhập để tìm kiếm ..."
                 placeholderTextColor={'gray'}
-                // onTouchEnd={() => {
-                //   if (textInputFocusForFilter) {
-                //     textInputForFilter.current.blur();
-                //     setTextInputFocusForFilter(false);
-                //   } else {
-                //     setTextInputFocusForFilter(true);
-                //     textInputForFilter.current.focus();
-                //   }
-                // }}
-              ></TextInput>
+                onTouchEnd={() => {
+                  if (textInputFilterFocus) {
+                  textInputFilter.current.blur();
+                  setTextInputFilterFocus(false);
+                } else {
+                  setTextInputFilterFocus(true);
+                  textInputFilter.current.focus();
+                }
+              }}
+              onFocus={() => setTextInputFilterFocus(true)}
+              onBlur={() => setTextInputFilterFocus(false)}
+                ></TextInput>
               <TouchableOpacity
                 onPress={() => setInputFilter('')}
                 style={{
@@ -1084,7 +1092,7 @@ export function Detail2({}) {
               </Text>
             </TouchableOpacity>
 
-            <ScrollView keyboardShouldPersistTaps="never">
+            <ScrollView keyboardShouldPersistTaps="handled">
               <View
                 style={{
                   paddingTop: 10,
@@ -1147,6 +1155,7 @@ export function Detail2({}) {
                             alignItems: 'center',
                           }}
                           onPress={() => {
+                            
                             if (key == undefined) {
                             } else if (choosenLaw.includes(key)) {
                               setChoosenLaw(

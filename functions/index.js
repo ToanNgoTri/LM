@@ -46,7 +46,7 @@ exports.countAllLaw = onRequest(async (req, res) => {
   if (req.method === 'POST') {
     try {
       const database = client.db('LawMachine');
-      const LawContent = database.collection('LawCollection');
+      const LawContent = database.collection('LawSearchDescription');
 
       const estimate = await LawContent.countDocuments();
       
@@ -95,10 +95,10 @@ exports.getlastedlaws = onRequest(async (req, res) => {
   if (req.method === 'POST') {
     try {
       const database = client.db('LawMachine');
-      const LawContent = database.collection('LawCollection');
+      const LawContent = database.collection('LawSearchDescription');
 
       LawContent.find()
-        .limit(30)
+        .limit(50)
         .project({info: 1})
         .sort({'info.lawDaySign': -1})
         .toArray()
