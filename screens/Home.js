@@ -575,7 +575,7 @@ export default function Home({}) {
                       lineHeight: 23,
                     }}
                   >
-                    {'  '}Các thông tin, nội dung và dịch vụ mà Thư viện Luật
+                    {'  '}Các thông tin, nội dung và dịch vụ mà Sổ Tay Luật
                     cung cấp chỉ mang tính chất tham khảo, với mục đích đem lại
                     cho người sử dụng những thông tin tổng quát về các quy định
                     của pháp luật qua từng thời kỳ. Thêm vào đó, việc thay đổi,
@@ -599,15 +599,15 @@ export default function Home({}) {
                   >
                     {'  '}Mặc dù đã cố gắng hạn chế những sai sót trong quá
                     trình nhập liệu và đăng tải, các thông tin, nội dung văn bản
-                    pháp luật do Thư viện Luật cung cấp không tránh khỏi những
+                    pháp luật do Sổ Tay Luật cung cấp không tránh khỏi những
                     khiếm khuyết hay sai sót do lỗi đánh máy, trình bày, hay
                     tính đúng sai về hiệu lực pháp lý của văn bản. Việc người sử
-                    dụng chấp nhận sử dụng dịch vụ của Thư viện Luật ngay từ lần
+                    dụng chấp nhận sử dụng dịch vụ của Sổ Tay Luật ngay từ lần
                     đầu tiên cũng đồng nghĩa với việc chấp nhận những khiếm
                     khuyết này, cũng như không làm nảy sinh bất cứ trách nhiệm
-                    pháp lý nào của Thư viện Luật với người sử dụng khi xảy ra
+                    pháp lý nào của Sổ Tay Luật với người sử dụng khi xảy ra
                     thiệt hại (nếu có) từ việc vận dụng các nội dung, thông tin
-                    mà Thư viện Luật cung cấp
+                    mà Sổ Tay Luật cung cấp
                   </Text>
                 </View>
                 <View style={{paddingBottom:10}}>
@@ -654,7 +654,7 @@ export default function Home({}) {
                       textAlign: 'center',
                     }}
                   >
-                    Thư viện Luật đã có phiên bản mới. Bạn có thể cập nhật để sử
+                    Sổ Tay Luật đã có phiên bản mới. Bạn có thể cập nhật để sử
                     dụng những tiện ích mới.
                   </Text>
                 </View>
