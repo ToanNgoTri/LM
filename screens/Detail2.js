@@ -958,7 +958,7 @@ export function Detail2({}) {
             style={{
               position: 'absolute',
               top: 80,
-              bottom: 60,
+              bottom: 80,
               minHeight: 500,
               right: 50,
               left: 50,
