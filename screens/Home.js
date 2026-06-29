@@ -411,6 +411,11 @@ export default function Home({}) {
             itemKeyExtractor={item => item.id}
             enableDynamicHeights
             estimatedItemHeight={ITEM_HEIGHT + GAP}
+            // useFlatList={false}: render trong ScrollView (KHÔNG ảo hóa) nên MỌI
+            // item mount và onLayout đo chiều cao thật ngay lần đầu -> không còn
+            // đè nhau lúc mở. (FlatList ảo hóa khiến view position:absolute không
+            // kích hoạt onLayout cho tới khi có relayout, vd khi kéo.)
+            useFlatList={false}
             style={{ flex: 1 }}
           />
         </View>

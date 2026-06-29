@@ -6,7 +6,6 @@ import { MongoClient } from 'mongodb';
 import serviceAccount from'./project2-197c0-firebase-adminsdk-wgo9a-ddd9ec03a8.json' with { type: "json" } ;;
 import openrouterAPIKey from './openrouterAPIKey.json' with { type: "json" } ;
 
-// const serviceAccount = require('./project2-197c0-firebase-adminsdk-wgo9a-4a0448ab63.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
