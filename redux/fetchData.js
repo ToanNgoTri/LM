@@ -110,8 +110,25 @@ export const getCountLaw = createSlice({
 })
 
 
+// Lưu trạng thái bộ lọc RIÊNG cho từng màn (searchLaw = Detail2, search = Detail1)
+// để không bị mất khi điều hướng (remount) qua lại, và hai màn độc lập nhau.
+export const filterUI = createSlice({
+  name: 'filterUI',
+  initialState: {
+    // valueInput: từ khóa đã áp dụng để bôi vàng (highlight) kết quả
+    searchLaw: { input: '', dateFrom: '', dateTo: '', agencies: [], valueInput: '' },
+    search: { input: '', dateFrom: '', dateTo: '', agencies: [], valueInput: '' },
+  },
+  reducers: {
+    setFilterUI: (state, action) => {
+      const { screen, ...rest } = action.payload;
+      state[screen] = { ...state[screen], ...rest };
+    },
+  },
+});
+
 export const searchLawDescription = createSlice({
-  name: 'searchLawDescription',     
+  name: 'searchLawDescription',
   initialState: {
     loading5: false,
     input5:'',
@@ -167,7 +184,12 @@ export function* mySaga1(state,action){
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
-      body:JSON.stringify({input:state.input})
+      body:JSON.stringify({
+        input:state.input,
+        dateFrom:state.dateFrom,
+        dateTo:state.dateTo,
+        agencies:state.agencies,
+      })
     })
 
 
@@ -176,6 +198,7 @@ export function* mySaga1(state,action){
 
 yield put(handle1(b))
   }catch(e){
+    yield put(handle1([]))
   }
 }
 
@@ -257,14 +280,20 @@ yield put(handle1(b))
               Accept: 'application/json',
               'Content-Type': 'application/json',
             },
-            body:JSON.stringify({input:state.input})
+            body:JSON.stringify({
+              input:state.input,
+              dateFrom:state.dateFrom,
+              dateTo:state.dateTo,
+              agencies:state.agencies,
+            })
           })
       
           let b = yield info.json()
-      
-      
+
+
           yield put(handle5({b}))
         }catch(e){
+          yield put(handle5({b:[]}))
         }
       }
 
@@ -308,3 +337,4 @@ export const {loader1,handle1} = searchContent.actions;
 export const {loader3,handle3} = getlastedlaws.actions;
 export const {loader4,handle4} = getCountLaw.actions;
 export const {loader5,handle5} = searchLawDescription.actions;
+export const {setFilterUI} = filterUI.actions;

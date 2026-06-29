@@ -107,6 +107,42 @@ export default function Home({}) {
         : [],    [data],
   );
 
+  // ---- Đo chiều cao thật của từng card TRƯỚC khi đưa vào Sortable ----
+  // Sortable (chế độ chiều cao động) định vị item theo `top` tuyệt đối và chỉ
+  // áp lại vị trí khi biết chiều cao thật. Nhưng onLayout của item bên trong
+  // Sortable (view position:absolute) KHÔNG kích hoạt lúc mount -> item xếp theo
+  // ước lượng và đè nhau, chỉ giãn ra khi kéo (lúc đó mới relayout). Vì vậy ta
+  // đo card ở một lớp ẩn (view luồng-bình-thường, onLayout chạy đáng tin), rồi
+  // truyền chiều cao đã biết qua itemHeight dạng hàm -> vị trí đúng ngay từ đầu.
+  const [cardHeights, setCardHeights] = useState({});
+  const cardHeightsRef = useRef({});
+
+  const handleMeasure = useCallback((id, h) => {
+    const rounded = Math.round(h);
+    if (cardHeightsRef.current[id] === rounded) return;
+    cardHeightsRef.current = { ...cardHeightsRef.current, [id]: rounded };
+    setCardHeights(cardHeightsRef.current);
+  }, []);
+
+  // Đã đo đủ mọi item hiện có chưa?
+  const allMeasured = useMemo(
+    () =>
+      sortableData.length > 0 &&
+      sortableData.every(it => cardHeights[it.id] != null),
+    [sortableData, cardHeights],
+  );
+
+  // itemHeight dạng hàm: trả về chiều cao thật đã đo (gồm cả GAP ở paddingTop).
+  // Đổi identity khi cardHeights đổi để Sortable nạp lại chiều cao.
+  // Chiều cao đã đo gồm cả GAP (mỗi item có paddingBottom = GAP). Đồng đều mọi
+  // item nên kéo-thả ổn định.
+  const getItemHeight = useCallback(
+    item => cardHeights[item.id] ?? ITEM_HEIGHT + GAP,
+    [cardHeights],
+  );
+
+  const keyExtractor = useCallback(item => item.id, []);
+
   useEffect(() => {
     // console.log('Object.keys(Info)', Object.keys(Info).length);
     // console.log('inputSearchLaw', inputSearchLaw);
@@ -246,10 +282,12 @@ export default function Home({}) {
       const { item, id } = props;
       return (
         <SortableItem {...props} key={id} data={item} onDrop={handleDrop}>
-          {/* GAP đặt ở paddingTop (không phải paddingBottom): vẫn nằm TRONG vùng
-              onLayout đo nên Sortable tính đúng khoảng cách giữa các card, đồng
-              thời item CUỐI không bị dư khoảng trống bên dưới -> sát tab bar. */}
-          <View style={{ paddingTop: GAP }}>
+          {/* GAP ở paddingBottom (đồng đều mọi item -> kéo-thả ổn định):
+              - item ĐẦU tự sát đỉnh (không có khoảng trống phía trên).
+              - giữa các item luôn cách GAP.
+              - item CUỐI dư GAP phía dưới, nhưng được giấu sau tab bar nhờ
+                container nới marginBottom xuống GAP (xem bên dưới). */}
+          <View style={{ paddingBottom: GAP }}>
             <LawCard
               item={item}
               onPress={() =>
@@ -401,23 +439,57 @@ export default function Home({}) {
       ) : (
         // Bình thường: danh sách kéo-thả để sắp xếp
         // (App.js đã bọc GestureHandlerRootView ở root, không cần bọc lại)
-        // Thu nhỏ viewport để list kết thúc ngay trên tab bar (không độn chiều
-        // cao vùng cuộn -> không dư khoảng trống ở đáy). Sortable cuộn nội bộ
-        // trong vùng này nên item cuối luôn nằm trên tab bar.
-        <View style={{ flex: 1, marginBottom: tabBarHeight }}>
-          <Sortable
-            data={sortableData}
-            renderItem={renderSortableItem}
-            itemKeyExtractor={item => item.id}
-            enableDynamicHeights
-            estimatedItemHeight={ITEM_HEIGHT + GAP}
-            // useFlatList={false}: render trong ScrollView (KHÔNG ảo hóa) nên MỌI
-            // item mount và onLayout đo chiều cao thật ngay lần đầu -> không còn
-            // đè nhau lúc mở. (FlatList ảo hóa khiến view position:absolute không
-            // kích hoạt onLayout cho tới khi có relayout, vd khi kéo.)
-            useFlatList={false}
-            style={{ flex: 1 }}
-          />
+        // marginBottom = tabBarHeight - GAP: cho viewport thò xuống đúng GAP vào
+        // vùng tab bar che. Mỗi item có paddingBottom = GAP, nên khi cuộn tới cuối,
+        // mép dưới card cuối nằm sát ĐỈNH tab bar, còn GAP dư (trong suốt) bị tab bar
+        // che mất -> không thấy. Item cuối "sát tab bar", item đầu sát đỉnh.
+        <View style={{ flex: 1, marginBottom: tabBarHeight - GAP }}>
+          {/* Lớp đo ẩn: đo chiều cao thật của mọi card khi chưa đo đủ. Card nằm
+              trong luồng layout bình thường nên onLayout chạy ngay khi mount.
+              opacity:0 + pointerEvents none + zIndex -1 -> không thấy, không chặn chạm. */}
+          {!allMeasured && (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: 0,
+                opacity: 0,
+                zIndex: -1,
+              }}
+            >
+              {sortableData.map(item => (
+                <View
+                  key={item.id}
+                  onLayout={e =>
+                    handleMeasure(item.id, e.nativeEvent.layout.height)
+                  }
+                >
+                  <View style={{ paddingBottom: GAP }}>
+                    <LawCard item={item} onPress={() => {}} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Chỉ render Sortable khi đã biết chiều cao thật của mọi item -> định vị
+              đúng ngay từ khung hình đầu (không đè nhau). itemHeight dạng HÀM đưa
+              chiều cao đã đo vào; không dùng enableDynamicHeights (tránh cơ chế tự
+              đo của thư viện vốn không kích hoạt onLayout lúc mount).
+              useFlatList={false}: render hết item một lần (danh sách luật có hạn). */}
+          {allMeasured && (
+            <Sortable
+              data={sortableData}
+              renderItem={renderSortableItem}
+              itemKeyExtractor={keyExtractor}
+              itemHeight={getItemHeight}
+              estimatedItemHeight={ITEM_HEIGHT + GAP}
+              useFlatList={false}
+              style={{ flex: 1 }}
+            />
+          )}
         </View>
       )}
     </>

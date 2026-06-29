@@ -17,31 +17,74 @@ const client = new MongoClient(
 );
 
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Điều kiện lọc theo khoảng ngày ký (info.lawDaySign lưu dạng chuỗi ISO,
+// so sánh chuỗi ISO theo thứ tự từ điển là hợp lệ).
+function buildDateCondition(dateFrom, dateTo) {
+  const range = {};
+  if (dateFrom) range.$gte = dateFrom;
+  if (dateTo) range.$lte = dateTo;
+  return Object.keys(range).length ? { 'info.lawDaySign': range } : null;
+}
+
+// Điều kiện lọc theo cơ quan ban hành: mã viết tắt nằm trong số hiệu (_id),
+// ví dụ 221/2026/NĐ-CP -> CP, 11/2026/TT-BCA -> BCA.
+function buildAgencyCondition(agencies) {
+  if (!Array.isArray(agencies) || !agencies.length) return null;
+  return {
+    $or: agencies.map(code => ({
+      _id: new RegExp(`[-/]${escapeRegex(code)}(?![A-Za-z0-9])`, 'i'),
+    })),
+  };
+}
+
 export const searchLawDescription = onRequest(async (req, res) => {
-  if (req.method === 'POST') {
-    try {
-      const database = client.db('LawMachine');
-      const LawContent = database.collection('LawSearchDescription');
+  if (req.method !== 'POST') {
+    res.status(405).json([]);
+    return;
+  }
+  try {
+    const database = client.db('LawMachine');
+    const LawContent = database.collection('LawSearchDescription');
 
-      const keywords = req.body.input.trim().split(/\s+/).filter(Boolean);
+    const conditions = [];
 
-      const regexConditions = keywords.map(word => ({
-        $or: [
-          { _id: new RegExp(word, 'i') },
-          { 'info.lawDescription': new RegExp(word, 'i') },
-          { 'info.lawNameDisplay': new RegExp(word, 'i') },
-        ],
-      }));
-
-      LawContent.find({
-        $and: regexConditions,
-      })
-        .project({ info: 1 })
-        .sort({ 'info.lawDaySign': -1 })
-        .toArray()
-        .then(o => res.json(o));
-    } finally {
+    const input = (req.body.input || '').trim();
+    if (input) {
+      const keywords = input.split(/\s+/).filter(Boolean);
+      keywords.forEach(word => {
+        conditions.push({
+          $or: [
+            { _id: new RegExp(word, 'i') },
+            { 'info.lawDescription': new RegExp(word, 'i') },
+            { 'info.lawNameDisplay': new RegExp(word, 'i') },
+          ],
+        });
+      });
     }
+
+    const dateCond = buildDateCondition(req.body.dateFrom, req.body.dateTo);
+    if (dateCond) conditions.push(dateCond);
+
+    const agencyCond = buildAgencyCondition(req.body.agencies);
+    if (agencyCond) conditions.push(agencyCond);
+
+    const query = conditions.length ? { $and: conditions } : {};
+
+    const result = await LawContent.find(query)
+      .project({ info: 1 })
+      .sort({ 'info.lawDaySign': -1 })
+      .limit(300)
+      .allowDiskUse(true)
+      .toArray();
+
+    res.json(result);
+  } catch (e) {
+    console.error('searchLawDescription error:', e);
+    res.status(500).json([]);
   }
 });
 
@@ -60,17 +103,40 @@ export const countAllLaw = onRequest(async (req, res) => {
 });
 
 export const searchContent = onRequest(async (req, res) => {
-  if (req.method === 'POST') {
-    try {
-      const database = client.db('LawMachine');
-      const LawSearch = database.collection('LawSearchContent');
-      LawSearch.find({ fullText: new RegExp(`${req.body.input}`, 'i') })
-        .project({ info: 1 })
-        .sort({ 'info.lawDaySign': -1 })
-        .toArray()
-        .then(o => res.json(o));
-    } finally {
+  if (req.method !== 'POST') {
+    res.status(405).json([]);
+    return;
+  }
+  try {
+    const database = client.db('LawMachine');
+    const LawSearch = database.collection('LawSearchContent');
+
+    const conditions = [];
+
+    const input = (req.body.input || '').trim();
+    if (input) {
+      conditions.push({ fullText: new RegExp(`${input}`, 'i') });
     }
+
+    const dateCond = buildDateCondition(req.body.dateFrom, req.body.dateTo);
+    if (dateCond) conditions.push(dateCond);
+
+    const agencyCond = buildAgencyCondition(req.body.agencies);
+    if (agencyCond) conditions.push(agencyCond);
+
+    const query = conditions.length ? { $and: conditions } : {};
+
+    const result = await LawSearch.find(query)
+      .project({ info: 1 })
+      .sort({ 'info.lawDaySign': -1 })
+      .limit(300)
+      .allowDiskUse(true)
+      .toArray();
+
+    res.json(result);
+  } catch (e) {
+    console.error('searchContent error:', e);
+    res.status(500).json([]);
   }
 });
 

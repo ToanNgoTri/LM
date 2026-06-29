@@ -1,7 +1,7 @@
 import { configureStore,getDefaultMiddleware } from '@reduxjs/toolkit'
 const createSagaMiddleware = require('redux-saga');
 const sagaMiddleware = createSagaMiddleware.default();
-import { read,searchContent,getlastedlaws,getCountLaw,searchLawDescription} from './fetchData'
+import { read,searchContent,getlastedlaws,getCountLaw,searchLawDescription,filterUI} from './fetchData'
 
 
 import {all,call,takeEvery} from 'redux-saga/effects'
@@ -18,7 +18,7 @@ export function* rootSaga(){
 
 
 export const store = configureStore({
-    reducer: {read:read.reducer,searchContent:searchContent.reducer,getlastedlaws:getlastedlaws.reducer,getCountLaw:getCountLaw.reducer,searchLawDescription:searchLawDescription.reducer}, // khi sử dụng cái này thì không cần combineReducers
+    reducer: {read:read.reducer,searchContent:searchContent.reducer,getlastedlaws:getlastedlaws.reducer,getCountLaw:getCountLaw.reducer,searchLawDescription:searchLawDescription.reducer,filterUI:filterUI.reducer}, // khi sử dụng cái này thì không cần combineReducers
     middleware:(getDefaultMiddleware)=> getDefaultMiddleware({serializableCheck:false, thunk: false}).concat([sagaMiddleware])
 
     // middleware:(getDefaultMiddleware)=> getDefaultMiddleware().concat([sagaMiddleware])

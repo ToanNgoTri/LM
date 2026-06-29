@@ -14,11 +14,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export const useTabBarHeight = () => {
   const insets = useSafeAreaInsets();
 
+  // Tab bar (AppNavigators.js) có position:absolute, bottom:-5 (thò xuống dưới
+  // mép màn hình 5px) và height = tabHeight. Phần THỰC SỰ che nội dung = tabHeight - 5.
+  //   tabHeight: iOS = insets.bottom + 30, Android = 48 + insets.bottom
+  // -> chừa đúng phần bị che để item cuối sát tab bar, không dư cũng không bị che.
   if (Platform.OS === 'ios') {
-    // Tab bar height 67 (đúng với code navigator của bạn)
-    return 20 +insets.bottom; // iOS: 67 + insets.bottom (để tránh bị che khi có home indicator)
+    return 25 + insets.bottom;
   } else {
-    // Android: 48 + insets.bottom (khớp với navigator)
-    return 37 + insets.bottom ;
+    return 43 + insets.bottom;
   }
 };

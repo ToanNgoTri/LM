@@ -8,14 +8,14 @@ export function ScreenToggle({ active }) {
   const navigation = useNavigation();
 
   function goTo(screen, side) {
-    console.log('current active', active);
-    console.log('navigate', screen);
+    // console.log('current active', active);
+    // console.log('navigate', screen);
     if (active === side) return;
 
     navigation.navigate(screen);
   }
 
-  console.log(navigation.getState());
+  // console.log(navigation.getState());
   return (
     <View style={styles.wrapper}>
       <View

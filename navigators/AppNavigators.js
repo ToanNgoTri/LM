@@ -23,6 +23,9 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 
 // ─────────────────────────────────────────────────────────────
 // SearchStack
+// Giữ native-stack (touch hoạt động bình thường). State filter của
+// hai màn (từ khóa, checkbox cơ quan, khoảng ngày) được lưu ở Redux
+// (slice filterUI) nên không bị mất khi chuyển qua lại giữa Detail1/Detail2.
 // ─────────────────────────────────────────────────────────────
 const SearchStackNav = createNativeStackNavigator();
 function SearchStack() {

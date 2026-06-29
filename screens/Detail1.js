@@ -22,25 +22,18 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { ScreenToggle } from './components/ScreenToggle';
+import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
+import { setFilterUI } from '../redux/fetchData';
 
 export function Detail1({}) {
   const [SearchResult, setSearchResult] = useState([]); // đây Object là các luật, điểm, khoản có kết quả tìm kiếm
   // console.log(SearchResult);
 
-  const [input, setInput] = useState(undefined);
-
-  const [inputForNavi, setInputForNavi] = useState('');
-
   const [paper, setPaper] = useState(0);
 
-  const [inputFilter, setInputFilter] = useState('');
   const [showFilter, setShowFilter] = useState(false);
 
-  const [checkedAllFilter, setCheckedAllFilter] = useState(true);
-
   // const [textInputFocus, setTextInputFocus] = useState(false);
-
-  const [textInputFilterFocus, setTextInputFilterFocus] = useState(false);
 
   const [choosenLaw, setChoosenLaw] = useState([]);
   const [LawFilted, setLawFilted] = useState(false);
@@ -50,7 +43,6 @@ export function Detail1({}) {
   const [warning, setWanring] = useState(false);
 
   const textInput = useRef(null);
-  const textInputFilter = useRef(null);
 
   const FlatListToScroll = useRef(null);
 
@@ -59,6 +51,51 @@ export function Detail1({}) {
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
 
   const dispatch = useDispatch();
+
+  // Bộ lọc riêng của màn này (search) qua Redux -> không mất khi remount
+  const filterUIState = useSelector(state => state['filterUI'].search);
+  const input = filterUIState.input;
+  const fromDate = filterUIState.dateFrom;
+  const toDate = filterUIState.dateTo;
+  const chosenAgencies = filterUIState.agencies;
+  // Từ khóa đã áp dụng, truyền sang Detail5 để tự tìm trong văn bản
+  const inputForNavi = filterUIState.valueInput;
+
+  const setInput = v =>
+    dispatch(
+      setFilterUI({
+        screen: 'search',
+        input: typeof v === 'function' ? v(input) : v,
+      }),
+    );
+  const setInputForNavi = v =>
+    dispatch(
+      setFilterUI({
+        screen: 'search',
+        valueInput: typeof v === 'function' ? v(inputForNavi) : v,
+      }),
+    );
+  const setFromDate = v =>
+    dispatch(
+      setFilterUI({
+        screen: 'search',
+        dateFrom: typeof v === 'function' ? v(fromDate) : v,
+      }),
+    );
+  const setToDate = v =>
+    dispatch(
+      setFilterUI({
+        screen: 'search',
+        dateTo: typeof v === 'function' ? v(toDate) : v,
+      }),
+    );
+  const setChosenAgencies = v =>
+    dispatch(
+      setFilterUI({
+        screen: 'search',
+        agencies: typeof v === 'function' ? v(chosenAgencies) : v,
+      }),
+    );
 
   const { loading1, result } = useSelector(state => state['searchContent']);
 
@@ -93,15 +130,27 @@ export function Detail1({}) {
     outputRange: [0, 1],
   });
 
-  function LawFilterContent(choosenLaw, SearchResult) {
-    let contentFilted = {};
-    Object.keys(SearchResult).filter(key => {
-      if (choosenLaw.includes(key)) {
-        contentFilted[key] = SearchResult[key];
-      }
+  function toggleAgency(code) {
+    setChosenAgencies(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code],
+    );
+  }
+
+  // Tìm kiếm trên server theo khoảng ngày ký + cơ quan ban hành
+  // (kết hợp với từ khóa đang nhập nếu có), không phải lọc kết quả cũ.
+  function searchWithFilter() {
+    Keyboard.dismiss();
+    const from = parseDateInput(fromDate, false);
+    const to = parseDateInput(toDate, true);
+    const keyword = input || '';
+    dispatch({
+      type: 'searchContent',
+      input: keyword,
+      dateFrom: from ? from.toISOString() : '',
+      dateTo: to ? to.toISOString() : '',
+      agencies: chosenAgencies,
     });
-    setLawFilted(contentFilted);
-    // console.log('LawFilted',LawFilted);
+    setInputForNavi(keyword);
   }
 
   function convertResult(info) {
@@ -213,16 +262,6 @@ export function Detail1({}) {
   useEffect(() => {
     setWanring(false);
   }, [input]);
-
-  useEffect(() => {
-    setInputFilter('');
-
-    if (choosenLaw.length == Object.keys(SearchResult || {}).length) {
-      setCheckedAllFilter(true);
-    } else {
-      setCheckedAllFilter(false);
-    }
-  }, [showFilter]);
 
   useEffect(() => {
     setChoosenLaw(
@@ -429,9 +468,11 @@ export function Detail1({}) {
         <View style={{ ...styles.inputContainer, height: 52, top: 5 }}>
           <View style={{ ...styles.containerBtb, paddingTop: 5 }}>
             <TouchableOpacity
+              disabled={loading1}
               style={{
                 ...styles.inputBtb,
                 backgroundColor: 'white',
+                opacity: loading1 ? 0.5 : 1,
               }}
               onPress={() => {
                 setShowFilter(true);
@@ -573,12 +614,14 @@ export function Detail1({}) {
           </View>
         </View>
         <View
+          pointerEvents={loading1 ? 'none' : 'auto'}
           style={{
             justifyContent: 'space-evenly',
             flexDirection: 'row',
             alignItems: 'center',
             width: '100%',
             paddingBottom: 5,
+            opacity: loading1 ? 0.5 : 1,
           }}
         >
           {['Luật/Bộ Luật', 'Nghị định', 'Thông tư'].map((option, i) => {
@@ -715,7 +758,7 @@ export function Detail1({}) {
                   <ActivityIndicator color="black" />
                   <View
                     style={{
-                      height: tabBarHeight+5,
+                      height: tabBarHeight,
                       width: 10,
                     }}
                   ></View>
@@ -723,7 +766,7 @@ export function Detail1({}) {
               ) : (
                 <View
                   style={{
-                    height: tabBarHeight+5,
+                    height: tabBarHeight,
                     width: 10,
                   }}
                 ></View>
@@ -800,234 +843,176 @@ export function Detail1({}) {
                 flexDirection: 'row',
                 backgroundColor: 'black',
                 height: 50,
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              <TextInput
-                ref={textInputFilter}
-                onChangeText={text => setInputFilter(text)}
-                value={inputFilter}
-                style={{
-                  paddingLeft: 10,
-                  paddingRight: 10,
-                  color: 'white',
-                  width: '85%',
-                  alignItems: 'center',
-                }}
-                placeholder=" Nhập để tìm kiếm ..."
-                placeholderTextColor={'gray'}
-                onTouchEnd={() => {
-                  if (textInputFilterFocus) {
-                    textInputFilter.current.blur();
-                    setTextInputFilterFocus(false);
-                  } else {
-                    setTextInputFilterFocus(true);
-                    textInputFilter.current.focus();
-                  }
-                }}
-                onFocus={() => setTextInputFilterFocus(true)}
-                onBlur={() => setTextInputFilterFocus(false)}
-              ></TextInput>
+              <Text
+                style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}
+              >
+                Nâng cao
+              </Text>
               <TouchableOpacity
-                onPress={() => setInputFilter('')}
+                onPress={() => {
+                  setFromDate('');
+                  setToDate('');
+                  setChosenAgencies([]);
+                }}
                 style={{
-                  width: '15%',
-                  display: 'flex',
-                  alignItems: 'center',
+                  position: 'absolute',
+                  right: 12,
+                  height: '100%',
                   justifyContent: 'center',
                 }}
               >
-                {inputFilter && (
-                  <Text
-                    style={{
-                      height: 20,
-                      width: 20,
-                      color: 'white',
-                      textAlign: 'center',
-                      verticalAlign: 'middle',
-                      backgroundColor: 'gray',
-                      borderRadius: 25,
-                    }}
-                  >
-                    X
-                  </Text>
-                )}
+                <Text style={{ color: 'white', fontSize: 13 }}>Xóa lọc</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                paddingBottom: 10,
-                width: '100%',
-                paddingLeft: '5%',
-                paddingTop: 10,
-                alignItems: 'center',
-                backgroundColor: 'rgb(240,240,240)',
-                shadowColor: 'black',
-                shadowOpacity: 0.5,
-                shadowOffset: {
-                  width: 5,
-                  height: 5,
-                },
-                shadowRadius: 4,
-                elevation: 10,
-              }}
-              onPress={() => {
-                if (choosenLaw.length == Object.keys(SearchResult).length) {
-                  setCheckedAllFilter(false);
-                  setChoosenLaw([]);
-                } else {
-                  setChoosenLaw(Object.keys(SearchResult));
-                  setCheckedAllFilter(true);
-                }
-              }}
-            >
-              <CheckBox
-                onClick={() => {
-                  if (choosenLaw.length == Object.keys(SearchResult).length) {
-                    setCheckedAllFilter(false);
-                    setChoosenLaw([]);
-                  } else {
-                    setChoosenLaw(Object.keys(SearchResult));
-                    setCheckedAllFilter(true);
-                  }
-                }}
-                isChecked={checkedAllFilter}
-              />
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <View style={{ paddingHorizontal: '8%', paddingTop: 15 }}>
+                <Text style={styles.filterLabel}>Từ khóa</Text>
+                <View style={styles.filterKeywordWrap}>
+                  <TextInput
+                    value={input || ''}
+                    onChangeText={text => setInput(text)}
+                    placeholder="Nhập từ khóa..."
+                    placeholderTextColor="gray"
+                    style={styles.filterKeywordInput}
+                  />
+                  {input ? (
+                    <TouchableOpacity
+                      onPress={() => setInput('')}
+                      style={{ paddingHorizontal: 8 }}
+                    >
+                      <Ionicons
+                        name="close-circle-outline"
+                        style={{ color: 'black', fontSize: 20 }}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
 
-              <Text
+              <View style={{ paddingHorizontal: '8%', paddingTop: 18 }}>
+                <Text style={styles.filterLabel}>Khoảng ngày ký</Text>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 8,
+                  }}
+                >
+                  <Text style={styles.filterDateLabel}>Từ</Text>
+                  <TextInput
+                    value={fromDate}
+                    onChangeText={t => setFromDate(formatDateInput(t))}
+                    placeholder="DD/MM/YYYY"
+                    placeholderTextColor="gray"
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    style={styles.filterDateInput}
+                  />
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 8,
+                  }}
+                >
+                  <Text style={styles.filterDateLabel}>Đến</Text>
+                  <TextInput
+                    value={toDate}
+                    onChangeText={t => setToDate(formatDateInput(t))}
+                    placeholder="DD/MM/YYYY"
+                    placeholderTextColor="gray"
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    style={styles.filterDateInput}
+                  />
+                </View>
+              </View>
+
+              <View
                 style={{
-                  color: 'black',
-                  fontWeight: 'bold',
-                  marginLeft: 5,
+                  paddingHorizontal: '8%',
+                  paddingTop: 18,
+                  paddingBottom: 6,
                 }}
               >
-                Tất cả
-              </Text>
-            </TouchableOpacity>
+                <Text style={styles.filterLabel}>Cơ quan ban hành</Text>
+              </View>
 
-            <ScrollView keyboardShouldPersistTaps="never">
+              <TouchableOpacity
+                style={styles.agencyRowAll}
+                onPress={() => {
+                  if (chosenAgencies.length === AGENCIES.length) {
+                    setChosenAgencies([]);
+                  } else {
+                    setChosenAgencies(AGENCIES.map(a => a.code));
+                  }
+                }}
+              >
+                <CheckBox
+                  onClick={() => {
+                    if (chosenAgencies.length === AGENCIES.length) {
+                      setChosenAgencies([]);
+                    } else {
+                      setChosenAgencies(AGENCIES.map(a => a.code));
+                    }
+                  }}
+                  isChecked={chosenAgencies.length === AGENCIES.length}
+                />
+
+                <Text
+                  style={{ color: 'black', fontWeight: 'bold', marginLeft: 5 }}
+                >
+                  Tất cả
+                </Text>
+              </TouchableOpacity>
+
               <View
                 style={{
                   paddingTop: 10,
                   paddingLeft: '10%',
                   paddingRight: '5%',
-                  display: 'flex',
                 }}
               >
-                {SearchResult &&
-                  Object.keys(SearchResult).map((key, i) => {
-                    let nameLaw = SearchResult[key]['lawNameDisplay'];
-                    let lawDescription = SearchResult[key]['lawDescription'];
-
-                    let inputSearchLawReg = inputFilter;
-                    if (
-                      inputFilter.match(
-                        /(\w+|\(|\)|\.|\+|\-|\,|\&|\?|\;|\!|\/|\s?)/gim,
-                      )
-                    ) {
-                      inputSearchLawReg = inputFilter.replace(/\(/gim, '\\(');
-
-                      inputSearchLawReg = inputSearchLawReg.replace(
-                        /\)/gim,
-                        '\\)',
-                      );
-
-                      inputSearchLawReg = inputSearchLawReg.replace(
-                        /\\/gim,
-                        '.',
-                      );
-
-                      inputSearchLawReg = inputSearchLawReg.replace(
-                        /\./gim,
-                        '\\.',
-                      );
-
-                      inputSearchLawReg = inputSearchLawReg.replace(
-                        /\+/gim,
-                        '\\+',
-                      );
-
-                      inputSearchLawReg = inputSearchLawReg.replace(
-                        /\?/gim,
-                        '\\?',
-                      );
-                    }
-                    if (
-                      nameLaw.match(new RegExp(inputSearchLawReg, 'igm')) ||
-                      lawDescription.match(new RegExp(inputSearchLawReg, 'igm'))
-                    ) {
-                      return (
-                        <TouchableOpacity
-                          key={`${i}b`}
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'row',
-                            paddingBottom: 10,
-                            width: '90%',
-                            alignItems: 'center',
-                          }}
-                          onPress={() => {
-                            if (key == undefined) {
-                            } else if (choosenLaw.includes(key)) {
-                              setChoosenLaw(
-                                choosenLaw.filter(a1 => a1 !== key),
-                                setCheckedAllFilter(false),
-                              );
-                            } else {
-                              setChoosenLaw([...choosenLaw, key]);
-                              if (
-                                choosenLaw.length ==
-                                Object.keys(SearchResult).length - 1
-                              ) {
-                                setCheckedAllFilter(true);
-                              }
-                            }
-                          }}
-                        >
-                          <CheckBox
-                            onClick={() => {
-                              if (key == undefined) {
-                              } else if (choosenLaw.includes(key)) {
-                                setChoosenLaw(
-                                  choosenLaw.filter(a1 => a1 !== key),
-                                );
-                                setCheckedAllFilter(false);
-                              } else {
-                                setChoosenLaw([...choosenLaw, key]);
-                                if (
-                                  choosenLaw.length ==
-                                  Object.keys(SearchResult).length - 1
-                                ) {
-                                  setCheckedAllFilter(true);
-                                }
-                              }
-                            }}
-                            isChecked={choosenLaw.includes(key)}
-                            style={{}}
-                          />
-
-                          <Text style={{ marginLeft: 5, color: 'black' }}>
-                            {nameLaw}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    }
-                  })}
+                {AGENCIES.map(ag => {
+                  const checked = chosenAgencies.includes(ag.code);
+                  return (
+                    <TouchableOpacity
+                      key={ag.code}
+                      style={styles.agencyRow}
+                      onPress={() => toggleAgency(ag.code)}
+                    >
+                      <CheckBox
+                        onClick={() => toggleAgency(ag.code)}
+                        isChecked={checked}
+                      />
+                      <Text
+                        style={{ marginLeft: 5, color: 'black', flexShrink: 1 }}
+                      >
+                        {ag.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </ScrollView>
             <TouchableOpacity
+              disabled={loading1}
               style={{
                 backgroundColor: 'green',
+                opacity: loading1 ? 0.6 : 1,
               }}
               onPress={() => {
-                LawFilterContent(choosenLaw, SearchResult);
+                searchWithFilter();
                 let timeOut = setTimeout(() => {
                   setShowFilter(false);
                   return () => {};
                 }, 500);
-                // setChoosenLaw(Object.keys(LawFilted))
                 Animated.timing(animated, {
                   toValue: !showFilter ? 100 : 0,
                   easing: Easing.in,
@@ -1102,6 +1087,57 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     fontSize: 20,
+  },
+  filterLabel: {
+    color: 'black',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  filterDateLabel: {
+    width: 40,
+    color: 'black',
+    fontSize: 14,
+  },
+  filterDateInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    color: 'black',
+  },
+  filterKeywordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+  },
+  filterKeywordInput: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    color: 'black',
+  },
+  agencyRowAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingLeft: '5%',
+    backgroundColor: 'rgb(240,240,240)',
+    shadowColor: 'black',
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 5, height: 5 },
+    shadowRadius: 4,
+    elevation: 10,
+  },
+  agencyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 12,
+    paddingRight: 10,
   },
   // content: {
   //   height: 0,
