@@ -54,7 +54,12 @@ export function Detail5() {
 
   const [modalStatus, setModalStatus] = useState(false);
 
-  const [copied, setCopied] = useState('none');
+  const [selectedDieuId, setSelectedDieuId] = useState('none'); // mã điều đang chọn (duy nhất theo vị trí)
+
+  const [selectedClauses, setSelectedClauses] = useState([]); // các khoản đang chọn: [{ idx, text }]
+
+  // ref phản ánh lựa chọn hiện tại -> tránh đọc state cũ (stale) khi nhấn nhanh nhiều khoản
+  const selectedRef = useRef({ dieuId: 'none', clauses: [] });
 
   const [exists, setExists] = useState(false);
 
@@ -483,9 +488,6 @@ export function Detail5() {
                 key={`${i}vvv`}
                 style={{
                   ...(article ? { ...styles.dieu } : {}),
-                  position: 'relative',
-                  display: 'flex',
-                  margin: 0,
                   lineHeight: 23,
                 }}
               >
@@ -648,6 +650,121 @@ export function Detail5() {
     });
   };
 
+  // đưa nội dung điều (có thể là chuỗi / mảng / object) về chuỗi
+  function toPlainText(raw) {
+    if (raw === undefined || raw === null) return '';
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw)) return raw.join(' ');
+    if (typeof raw === 'object') {
+      const k = Object.keys(raw)[0];
+      return typeof k === 'string' ? k : JSON.stringify(raw);
+    }
+    return String(raw);
+  }
+
+  // tách nội dung điều thành từng khoản theo dòng bắt đầu bằng "số."
+  function splitClauses(text) {
+    if (typeof text !== 'string' || !text.trim()) return null;
+    const lines = text.split('\n');
+    const clauses = [];
+    let cur = null;
+    for (const line of lines) {
+      if (/^\s*\d+\.(\s|$)/.test(line)) {
+        if (cur !== null) clauses.push(cur);
+        cur = line;
+      } else {
+        cur = cur === null ? line : cur + '\n' + line;
+      }
+    }
+    if (cur !== null) clauses.push(cur);
+    return clauses.length > 1 ? clauses : null; // chỉ tách khi có nhiều hơn 1 khoản
+  }
+
+  // tách nội dung điều thành mảng khoản (dùng chung cho hiển thị và copy -> luôn khớp index)
+  function getClauses(rawContent) {
+    const text = toPlainText(rawContent);
+    return splitClauses(text) || [text];
+  }
+
+  // đọc số khoản ở đầu chuỗi ("3. ..." -> 3); không đánh số (chapeau) -> -1 (lên đầu)
+  function clauseNumber(text) {
+    const m = String(text).match(/^\s*(\d+)\./);
+    return m ? parseInt(m[1], 10) : -1;
+  }
+
+  // áp dụng lựa chọn: copy = tên điều + text các khoản đang chọn
+  // sắp xếp theo SỐ KHOẢN in trong văn bản (không theo vị trí mảng)
+  function applySelection(dieuId, title, items) {
+    const sorted = [...items].sort((a, b) => {
+      const na = clauseNumber(a.text);
+      const nb = clauseNumber(b.text);
+      if (na !== nb) return na - nb;
+      return a.idx - b.idx;
+    });
+    const dId = sorted.length ? dieuId : 'none';
+    // cập nhật ref trước (đồng bộ) để lần nhấn kế tiếp đọc đúng
+    selectedRef.current = { dieuId: dId, clauses: sorted };
+    setSelectedDieuId(dId);
+    setSelectedClauses(sorted);
+    if (sorted.length) {
+      const body = sorted.map(c => c.text).join('\n');
+      Clipboard.setString(`${title}\n${body}`);
+      showToast();
+      Vibration.vibrate(20);
+    }
+  }
+
+  // TAP / LONG-PRESS: chọn hoặc bỏ chọn khoản này (cộng dồn trong cùng điều)
+  function toggleClause(dieuId, title, idx, clauseText) {
+    const cur = selectedRef.current;
+    const base = dieuId === cur.dieuId ? cur.clauses : []; // khác điều -> bắt đầu lại
+    const exists = base.some(c => c.idx === idx);
+    const next = exists
+      ? base.filter(c => c.idx !== idx)
+      : [...base, { idx, text: clauseText }];
+    applySelection(dieuId, title, next);
+  }
+
+  // tap vào tiêu đề điều -> bật/tắt chọn cả điều (đang có chọn thì xóa hết -> dùng để reset)
+  function selectWholeDieu(dieuId, title, clauses) {
+    const cur = selectedRef.current;
+    if (dieuId === cur.dieuId && cur.clauses.length) {
+      applySelection(dieuId, title, []); // đang chọn -> xóa hết
+    } else {
+      applySelection(
+        dieuId,
+        title,
+        clauses.map((text, idx) => ({ idx, text })),
+      );
+    }
+  }
+
+  // khoản này có đang được chọn không
+  function isClauseSelected(dieuId, idx) {
+    return selectedDieuId === dieuId && selectedClauses.some(c => c.idx === idx);
+  }
+
+  // điều này có đang được chọn không (có ít nhất 1 khoản được chọn)
+  function isDieuSelected(dieuId) {
+    return selectedDieuId === dieuId && selectedClauses.length > 0;
+  }
+
+  // render nội dung điều: mỗi khoản là 1 vùng nhấn riêng
+  // nhấn nhẹ (tap) = chọn/bỏ chọn; giữ (long-press) cũng cho kết quả như vậy
+  function renderClauses(clauses, dieuTitle, dieuId) {
+    return clauses.map((clause, idx) => (
+      <Pressable
+        key={`kh${idx}`}
+        onPress={() => toggleClause(dieuId, dieuTitle, idx, clause)}
+        style={isClauseSelected(dieuId, idx) ? styles.copiedBg : null}
+      >
+        <Text style={styles.lines}>
+          {highlight([clause], valueInput, false)}
+        </Text>
+      </Pressable>
+    ));
+  }
+
   const a = (key, i, key1, i1a, t) => {
     console.log('a');
     onlyArticle = false;
@@ -664,24 +781,13 @@ export function Detail5() {
       >
         {key[key1].map((key2, i2) => {
           const title = Object.keys(key2)[0];
-          const content = Object.values(key2)[0];
-          const fullText = `${title}\n${content}`; // hoặc `${title}: ${content}`
+          const clauses = getClauses(Object.values(key2)[0]);
+          const dieuId = `a-${i}-${i1a === undefined ? 't' : i1a}-${i2}`;
           return (
-            <Pressable
-              key={`${i2}a1`}
-              onLongPress={() => {
-                Clipboard.setString(fullText);
-                console.log('Copied:', fullText);
-                setCopied(title);
-                showToast();
-                Vibration.vibrate(20);
-              }}
-            >
+            <View key={`${i2}a1`}>
               <Animated.View
                 style={{
                   paddingVertical: 4,
-                  backgroundColor:
-                    copied == title ? '#d1daa8ff' : 'transparent',
                   // opacity: fadeAnimation,
                   // borderRadius: 4,
                 }}
@@ -695,16 +801,24 @@ export function Detail5() {
                 }}
               >
                 {Object.keys(key2) == ' ' || (
-                  <Text style={{ ...styles.dieu }}>
-                    {highlight(Object.keys(key2), valueInput, true)}
-                  </Text>
+                  <Pressable
+                    onPress={() => selectWholeDieu(dieuId, title, clauses)}
+                  >
+                    <Text
+                      selectable={true}
+                      style={[
+                        styles.dieu,
+                        isDieuSelected(dieuId) ? styles.copiedBg : null,
+                      ]}
+                    >
+                      {highlight(Object.keys(key2), valueInput, true)}
+                    </Text>
+                  </Pressable>
                 )}
 
-                <Text style={{ ...styles.lines }}>
-                  {highlight(Object.values(key2), valueInput, false)}
-                </Text>
+                {renderClauses(clauses, title, dieuId)}
               </Animated.View>
-            </Pressable>
+            </View>
           );
         })}
       </View>
@@ -755,7 +869,7 @@ export function Detail5() {
                   }}
                 >
                   <Text
-                    electable={true}
+                    selectable={true}
                     style={{
                       fontSize: 14,
                       color: 'white',
@@ -797,12 +911,31 @@ export function Detail5() {
                   }}
                   // style={go ? {width: '100%'} : {width: '99%'}}
                 >
-                  <Text style={styles.dieu}>
-                    {highlight(Object.keys(keyC), valueInput, true)}
-                  </Text>
-                  <Text style={styles.lines}>
-                    {highlight(Object.values(keyC), valueInput, false)}
-                  </Text>
+                  {(() => {
+                    const bTitle = Object.keys(keyC)[0];
+                    const bClauses = getClauses(Object.values(keyC)[0]);
+                    const bDieuId = `b-${i}-${iC}`;
+                    return (
+                      <>
+                        <Pressable
+                          onPress={() =>
+                            selectWholeDieu(bDieuId, bTitle, bClauses)
+                          }
+                        >
+                          <Text
+                            selectable={true}
+                            style={[
+                              styles.dieu,
+                              isDieuSelected(bDieuId) ? styles.copiedBg : null,
+                            ]}
+                          >
+                            {highlight(Object.keys(keyC), valueInput, true)}
+                          </Text>
+                        </Pressable>
+                        {renderClauses(bClauses, bTitle, bDieuId)}
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             );
@@ -818,25 +951,15 @@ export function Detail5() {
     // onlyArticle = true;
     console.log('c');
     const title = Object.keys(key)[0];
-    const content = Object.values(key)[0];
-    const fullText = `${title}\n${content}`; // hoặc `${title}: ${content}`
+    const clauses = getClauses(key[ObjKeys]);
+    const dieuId = `c-${i}`;
 
     return Object.keys(key)[0] != '0' ? (
-      <Pressable
-        key={`${i}c`}
-        onLongPress={() => {
-          Clipboard.setString(fullText);
-          console.log('Copied:', fullText);
-          setCopied(title);
-          showToast();
-          Vibration.vibrate(20);
-        }}
-      >
-        <View key={`${i}c`}>
+      <View key={`${i}c`}>
+        <View key={`${i}cInner`}>
           <Animated.View
             style={{
               paddingVertical: 4,
-              backgroundColor: copied == title ? '#d1daa8ff' : 'transparent',
               // opacity: fadeAnimation,
               // borderRadius: 4,
             }}
@@ -849,15 +972,21 @@ export function Detail5() {
               });
             }}
           >
-            <Text style={styles.dieu}>
-              {highlight([ObjKeys], valueInput, true)}
-            </Text>
-            <Text style={styles.lines}>
-              {highlight([key[ObjKeys]], valueInput, false)}
-            </Text>
+            <Pressable onPress={() => selectWholeDieu(dieuId, title, clauses)}>
+              <Text
+                selectable={true}
+                style={[
+                  styles.dieu,
+                  isDieuSelected(dieuId) ? styles.copiedBg : null,
+                ]}
+              >
+                {highlight([ObjKeys], valueInput, true)}
+              </Text>
+            </Pressable>
+            {renderClauses(clauses, title, dieuId)}
           </Animated.View>
         </View>
-      </Pressable>
+      </View>
     ) : (
       <View key={`${i}c1`}></View>
     );
@@ -2054,37 +2183,29 @@ const styles = StyleSheet.create({
     color: 'black',
   },
   lines: {
-    display: 'flex',
-    position: 'relative',
     textAlign: 'justify',
     paddingLeft: 10,
     paddingRight: 10,
-    paddingBottom: '0',
+    paddingBottom: 0,
     fontSize: 14,
     color: 'black',
     lineHeight: 23,
-    overflow: 'hidden',
   },
   highlight: {
     color: 'black',
     backgroundColor: 'yellow',
-    // position:'re',
-    // display: 'flex',
-    textAlign: 'center',
     lineHeight: 23,
-    // position:'absolute',
-    position: 'relative',
   },
   highlight1: {
     color: 'black',
-    // display: 'flex',
-    textAlign: 'center',
-    position: 'relative',
     backgroundColor: 'orange',
     lineHeight: 23,
   },
   content: {
     height: 0,
+  },
+  copiedBg: {
+    backgroundColor: '#d1daa8ff',
   },
   functionTab: {
     position: 'absolute',
