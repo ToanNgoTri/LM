@@ -1494,6 +1494,7 @@ export function Detail5() {
                 insets={insets}
                 screen={route.params.screen}
                 onClose={() => {
+                  Keyboard.dismiss();
                   setTimeout(() => {
                     setShowArticle(false);
                   }, 600);
@@ -1504,6 +1505,7 @@ export function Detail5() {
                   }).start();
                 }}
                 onSelect={y => {
+                  Keyboard.dismiss();
                   setShowArticle(false);
                   list.current.scrollTo({ y: y - 55 });
                   Animated.timing(animatedForNavi, {

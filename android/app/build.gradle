@@ -82,8 +82,8 @@ android {
         applicationId "com.lawmachine"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 66
-        versionName "2.92"
+        versionCode 67
+        versionName "2.93"
     }
     signingConfigs {
         debug {
