@@ -3,6 +3,7 @@ import {
   Text,
   View,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   TextInput,
   Keyboard,
@@ -121,10 +122,46 @@ function SidePanel({
     return Object.keys(item)[0].match(new RegExp(abc, 'igm'));
   });
 
-  const dataList =
+  const dataList = (
     mode === 'bookmark'
       ? positions.filter(o => bookmarks.includes(Object.keys(o)[0]))
-      : SearchArticalResult || positions;
+      : SearchArticalResult || positions
+  ).filter(k => Object.keys(k)[0] !== ' ');
+
+  const renderItem = ({ item }) => {
+    const title = Object.keys(item)[0];
+    const isMarked = bookmarks.includes(title);
+    return (
+      <View
+        style={{
+          ...styles.listItem,
+          flexDirection: 'row',
+          alignItems: 'center',
+        }}
+      >
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          onPress={() => onSelect(Object.values(item))}
+        >
+          <Text style={styles.listItemText}>{title}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => toggleBookmark(title)}
+          style={{
+            paddingLeft: 8,
+            paddingRight: 4,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Ionicons
+            name={isMarked ? 'star' : 'star-outline'}
+            style={{ fontSize: 20, color: isMarked ? '#FFB300' : 'gray' }}
+          ></Ionicons>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <>
@@ -214,54 +251,18 @@ function SidePanel({
             )}
           </TouchableOpacity>
         </View>
-        <ScrollView>
-          <View style={{ height: 7 }}>
-            {
-              // đây là hàng ảo để thêm margin
-            }
-          </View>
-          {dataList.map((key, i) => {
-            if (Object.keys(key) != ' ') {
-              const title = Object.keys(key)[0];
-              return (
-                <View
-                  key={`${i}SearchArtical`}
-                  style={{
-                    ...styles.listItem,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                >
-                  <TouchableOpacity
-                    style={{ flex: 1 }}
-                    onPress={() => onSelect(Object.values(key))}
-                  >
-                    <Text style={styles.listItemText}>{title}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => toggleBookmark(title)}
-                    style={{
-                      paddingLeft: 8,
-                      paddingRight: 4,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Ionicons
-                      name={
-                        bookmarks.includes(title) ? 'star' : 'star-outline'
-                      }
-                      style={{
-                        fontSize: 20,
-                        color: bookmarks.includes(title) ? '#FFB300' : 'gray',
-                      }}
-                    ></Ionicons>
-                  </TouchableOpacity>
-                </View>
-              );
-            }
-          })}
-        </ScrollView>
+        <FlatList
+          style={{ flex: 1 }}
+          data={dataList}
+          keyExtractor={(item, i) => `${i}SearchArtical`}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={<View style={{ height: 7 }} />}
+          renderItem={renderItem}
+          initialNumToRender={15}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews={true}
+        />
       </Animated.View>
     </>
   );
@@ -409,28 +410,6 @@ export function Detail5() {
   }
 
   const animatedForNavi = useRef(new Animated.Value(0)).current;
-
-  // Riêng cho panel trượt (Mục lục/Ghi nhớ): 0 = đóng, 1 = mở.
-  // Dùng native driver -> slide chạy trên UI thread, KHÔNG bị khựng khi JS đang
-  // bận render/expand thân luật lúc mở.
-  const panelAnim = useRef(new Animated.Value(0)).current;
-
-  const slidePanelIn = () => {
-    panelAnim.setValue(0); // luôn bắt đầu từ vị trí đóng để có hiệu ứng trượt vào
-    Animated.timing(panelAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const slidePanelOut = () => {
-    Animated.timing(panelAnim, {
-      toValue: 0,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  };
 
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
 
@@ -873,15 +852,14 @@ export function Detail5() {
     ],
   });
 
-  // panelAnim: 0 = đóng (panel đẩy sang phải khuất), 1 = mở (về vị trí 0).
-  let transX = panelAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [(widthDevice / 100) * 60, 0],
+  let transX = animatedForNavi.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [0, (widthDevice / 100) * 60],
   });
 
-  let Opacity = panelAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.7],
+  let Opacity = animatedForNavi.interpolate({
+    inputRange: [-100, 0],
+    outputRange: [0.7, 0],
   });
 
   let MagginBottom = animatedForNavi.interpolate({
@@ -1008,6 +986,21 @@ export function Detail5() {
     }
   }
 
+  // đang trong chế độ chọn (đã có ít nhất 1 khoản được chọn)
+  function hasSelection() {
+    return selectedRef.current.clauses.length > 0;
+  }
+
+  // PRESS thường: chỉ chọn thêm / bỏ chọn khi ĐÃ vào chế độ chọn (long-press trước)
+  function pressClause(dieuId, title, idx, clauseText) {
+    if (!hasSelection()) return;
+    toggleClause(dieuId, title, idx, clauseText);
+  }
+  function pressDieu(dieuId, title, clauses) {
+    if (!hasSelection()) return;
+    selectWholeDieu(dieuId, title, clauses);
+  }
+
   // khoản này có đang được chọn không
   function isClauseSelected(dieuId, idx) {
     return selectedDieuId === dieuId && selectedClauses.some(c => c.idx === idx);
@@ -1024,7 +1017,8 @@ export function Detail5() {
     return clauses.map((clause, idx) => (
       <Pressable
         key={`kh${idx}`}
-        onPress={() => toggleClause(dieuId, dieuTitle, idx, clause)}
+        onLongPress={() => toggleClause(dieuId, dieuTitle, idx, clause)}
+        onPress={() => pressClause(dieuId, dieuTitle, idx, clause)}
         style={isClauseSelected(dieuId, idx) ? styles.copiedBg : null}
       >
         <Text style={styles.lines}>
@@ -1070,7 +1064,8 @@ export function Detail5() {
               >
                 {Object.keys(key2) == ' ' || (
                   <Pressable
-                    onPress={() => selectWholeDieu(dieuId, title, clauses)}
+                    onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
+                    onPress={() => pressDieu(dieuId, title, clauses)}
                   >
                     <Text
                       selectable={true}
@@ -1182,9 +1177,10 @@ export function Detail5() {
                     return (
                       <>
                         <Pressable
-                          onPress={() =>
+                          onLongPress={() =>
                             selectWholeDieu(bDieuId, bTitle, bClauses)
                           }
+                          onPress={() => pressDieu(bDieuId, bTitle, bClauses)}
                         >
                           <Text
                             selectable={true}
@@ -1235,7 +1231,10 @@ export function Detail5() {
               });
             }}
           >
-            <Pressable onPress={() => selectWholeDieu(dieuId, title, clauses)}>
+            <Pressable
+              onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
+              onPress={() => pressDieu(dieuId, title, clauses)}
+            >
               <Text
                 selectable={true}
                 style={[
@@ -1495,15 +1494,23 @@ export function Detail5() {
                 insets={insets}
                 screen={route.params.screen}
                 onClose={() => {
-                  slidePanelOut();
                   setTimeout(() => {
                     setShowArticle(false);
                   }, 600);
+                  Animated.timing(animatedForNavi, {
+                    toValue: 0,
+                    duration: 600,
+                    useNativeDriver: false,
+                  }).start();
                 }}
                 onSelect={y => {
-                  panelAnim.setValue(0); // đóng ngay -> chỉ cần reset cho lần mở sau
                   setShowArticle(false);
                   list.current.scrollTo({ y: y - 55 });
+                  Animated.timing(animatedForNavi, {
+                    toValue: 0,
+                    duration: 600,
+                    useNativeDriver: false,
+                  }).start();
                 }}
               />
             )}
@@ -1612,22 +1619,18 @@ export function Detail5() {
                   // đang mở đúng chế độ 'article' -> đóng; ngược lại -> mở chế độ article
                   const willClose = showArticle && panelMode === 'article';
                   if (willClose) {
-                    slidePanelOut();
                     let timeOut = setTimeout(() => {
                       setShowArticle(false);
                       return () => {};
                     }, 600);
                   } else {
-                    if (!showArticle) slidePanelIn(); // đang đóng -> trượt vào; đang mở (đổi mode) -> giữ nguyên
                     setPanelMode('article');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
-                  // đưa search bar/functab về trạng thái nghỉ (0); không còn dùng
-                  // -100 vì panel đã tách sang panelAnim (native).
                   Animated.timing(animatedForNavi, {
-                    toValue: 0,
+                    toValue: willClose ? 0 : -100,
                     duration: 600,
                     useNativeDriver: false,
                   }).start();
@@ -1653,20 +1656,18 @@ export function Detail5() {
                   // đang mở đúng chế độ 'bookmark' -> đóng; ngược lại -> mở chế độ ghi nhớ
                   const willClose = showArticle && panelMode === 'bookmark';
                   if (willClose) {
-                    slidePanelOut();
                     let timeOut = setTimeout(() => {
                       setShowArticle(false);
                       return () => {};
                     }, 600);
                   } else {
-                    if (!showArticle) slidePanelIn(); // đang đóng -> trượt vào; đang mở (đổi mode) -> giữ nguyên
                     setPanelMode('bookmark');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
                   Animated.timing(animatedForNavi, {
-                    toValue: 0,
+                    toValue: willClose ? 0 : -100,
                     duration: 600,
                     useNativeDriver: false,
                   }).start();

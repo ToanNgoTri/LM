@@ -742,7 +742,8 @@ export function Detail1({}) {
           <FlatList
             onScrollBeginDrag={() => Keyboard.dismiss()}
             ref={ref => {
-              (global.SearchContentRef = ref), FlatListToScroll;
+              global.SearchContentRef = ref;
+              FlatListToScroll.current = ref;
             }}
             data={Object.keys(convertResultLoading(LawFilted))}
             renderItem={renderItem}
