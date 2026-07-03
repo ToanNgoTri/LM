@@ -37,6 +37,236 @@ let sumChapterPrevious; // sum cộng dồn các phần trư của các chương
 let eachSectionWithChapter = [];
 //lineHeight trong lines phải luôn nhỏ hơn trong highlight và View Hightlight
 
+/* ------------------------------------------------------------------ */
+/* Đọc/ghi danh sách Điều đã ghi nhớ theo <screen> (dùng chung)        */
+/* ------------------------------------------------------------------ */
+async function loadBookmarksFile(screen) {
+  if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
+    const file = await FileSystem.readFile(
+      Dirs.CacheDir + '/bookmarks.txt',
+      'utf8',
+    );
+    if (file) {
+      const all = JSON.parse(file);
+      return all[screen] || [];
+    }
+  }
+  return [];
+}
+
+async function saveBookmarksFile(screen, listBookmark) {
+  let all = {};
+  if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
+    const file = await FileSystem.readFile(
+      Dirs.CacheDir + '/bookmarks.txt',
+      'utf8',
+    );
+    if (file) all = JSON.parse(file);
+  }
+  if (listBookmark.length === 0) {
+    delete all[screen];
+  } else {
+    all[screen] = listBookmark;
+  }
+  await FileSystem.writeFile(
+    Dirs.CacheDir + '/bookmarks.txt',
+    JSON.stringify(all),
+    'utf8',
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Panel trượt bên phải: Mục lục (article) HOẶC danh sách Ghi nhớ.     */
+/* Tách riêng để state gõ-tìm (inputSearchArtical) và ghi-nhớ chỉ      */
+/* render lại panel này, KHÔNG render lại toàn bộ thân văn bản.        */
+/* ------------------------------------------------------------------ */
+function SidePanel({
+  mode, // 'article' | 'bookmark'
+  positions, // positionYArrArtical: [{ "Điều...": y }]
+  transX,
+  Opacity,
+  widthDevice,
+  insets,
+  screen,
+  onClose, // đóng panel (có animation)
+  onSelect, // (yArray) => cuộn tới vị trí
+}) {
+  const [inputSearchArtical, setInputSearchArtical] = useState('');
+  const [bookmarks, setBookmarks] = useState([]);
+  const bookmarksRef = useRef([]);
+  const textInputArticle = useRef(null);
+
+  useEffect(() => {
+    loadBookmarksFile(screen).then(listBookmark => {
+      bookmarksRef.current = listBookmark;
+      setBookmarks(listBookmark);
+    });
+  }, [screen]);
+
+  function toggleBookmark(title) {
+    const cur = bookmarksRef.current;
+    const next = cur.includes(title)
+      ? cur.filter(t => t !== title)
+      : [...cur, title];
+    bookmarksRef.current = next;
+    setBookmarks(next);
+    saveBookmarksFile(screen, next);
+    Vibration.vibrate(20);
+  }
+
+  const SearchArticalResult = positions.filter(item => {
+    let abc = inputSearchArtical;
+    abc = inputSearchArtical.replace(/\(/gim, '\\(');
+    abc = abc.replace(/\)/gim, '\\)');
+    return Object.keys(item)[0].match(new RegExp(abc, 'igm'));
+  });
+
+  const dataList =
+    mode === 'bookmark'
+      ? positions.filter(o => bookmarks.includes(Object.keys(o)[0]))
+      : SearchArticalResult || positions;
+
+  return (
+    <>
+      <Animated.View
+        style={{
+          backgroundColor: 'rgb(245,245,247)',
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          display: 'flex',
+          position: 'absolute',
+          opacity: Opacity,
+        }}
+      >
+        <TouchableOpacity //overlay
+          style={{
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            display: 'flex',
+            position: 'absolute',
+          }}
+          onPress={onClose}
+        ></TouchableOpacity>
+      </Animated.View>
+
+      <Animated.View
+        style={{
+          ...styles.listArticle,
+          width: (widthDevice / 100) * 60,
+          transform: [{ translateX: transX }],
+          marginBottom:
+            Platform.OS === 'ios' ? 15 + insets.bottom : 35 + insets.bottom,
+          marginTop: insets.top + 50,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            backgroundColor: 'black',
+            height: 50,
+          }}
+        >
+          <TextInput
+            ref={textInputArticle}
+            onChangeText={text => setInputSearchArtical(text)}
+            selectTextOnFocus={true}
+            value={inputSearchArtical}
+            style={{
+              paddingLeft: 10,
+              paddingRight: 10,
+              color: 'white',
+              width: '85%',
+              alignItems: 'center',
+            }}
+            placeholder=" Nhập từ điều luật ..."
+            placeholderTextColor={'gray'}
+          ></TextInput>
+          <TouchableOpacity
+            onPress={() => {
+              setInputSearchArtical('');
+              textInputArticle.current.focus();
+            }}
+            style={{
+              width: '15%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {inputSearchArtical && (
+              <Text
+                style={{
+                  height: 20,
+                  width: 20,
+                  color: 'white',
+                  textAlign: 'center',
+                  verticalAlign: 'middle',
+                  backgroundColor: 'gray',
+                  borderRadius: 25,
+                }}
+              >
+                X
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        <ScrollView>
+          <View style={{ height: 7 }}>
+            {
+              // đây là hàng ảo để thêm margin
+            }
+          </View>
+          {dataList.map((key, i) => {
+            if (Object.keys(key) != ' ') {
+              const title = Object.keys(key)[0];
+              return (
+                <View
+                  key={`${i}SearchArtical`}
+                  style={{
+                    ...styles.listItem,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                >
+                  <TouchableOpacity
+                    style={{ flex: 1 }}
+                    onPress={() => onSelect(Object.values(key))}
+                  >
+                    <Text style={styles.listItemText}>{title}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => toggleBookmark(title)}
+                    style={{
+                      paddingLeft: 8,
+                      paddingRight: 4,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        bookmarks.includes(title) ? 'star' : 'star-outline'
+                      }
+                      style={{
+                        fontSize: 20,
+                        color: bookmarks.includes(title) ? '#FFB300' : 'gray',
+                      }}
+                    ></Ionicons>
+                  </TouchableOpacity>
+                </View>
+              );
+            }
+          })}
+        </ScrollView>
+      </Animated.View>
+    </>
+  );
+}
+
 export function Detail5() {
   const [tittleArray, setTittleArray] = useState([]); // đây là 'phần thứ...' hoặc chương (nói chung là section cao nhất)
 
@@ -46,9 +276,8 @@ export function Detail5() {
   const [positionYArrArtical, setPositionYArrArtical] = useState([]);
   const [showArticle, setShowArticle] = useState(false);
 
-  const [currentY, setCurrentY] = useState(0); // để lấy vị trí mình đang scroll tới
+  const currentYRef = useRef(0); // vị trí scroll hiện tại; chỉ đọc trong callback đo -> dùng ref để KHÔNG re-render mỗi khung hình cuộn
 
-  const [inputSearchArtical, setInputSearchArtical] = useState(''); // input phần tìm kiếm 'Điều'
 
   const [currentSearchPoint, setCurrentSearchPoint] = useState(1); // thứ tự kết quả search đang trỏ tới
 
@@ -63,8 +292,6 @@ export function Detail5() {
 
   const [exists, setExists] = useState(false);
 
-  const [bookmarks, setBookmarks] = useState([]); // các Điều đã ghi nhớ (mảng title)
-  const bookmarksRef = useRef([]); // tránh đọc state cũ khi bấm sao nhanh
   const [panelMode, setPanelMode] = useState('article'); // 'article' | 'bookmark'
 
   const dispatch = useDispatch();
@@ -75,8 +302,6 @@ export function Detail5() {
 
   const netInfo = useNetInfo();
   let internetConnected = netInfo.isConnected;
-
-  console.log(1);
 
   async function StoreInternal() {
     async function k() {
@@ -183,58 +408,34 @@ export function Detail5() {
     }
   }
 
-  // đọc danh sách Điều đã ghi nhớ của luật hiện tại
-  async function loadBookmarks() {
-    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
-      const file = await FileSystem.readFile(
-        Dirs.CacheDir + '/bookmarks.txt',
-        'utf8',
-      );
-      if (file) {
-        const all = JSON.parse(file);
-        return all[route.params.screen] || [];
-      }
-    }
-    return [];
-  }
-
-  // ghi danh sách ghi nhớ (theo screen) xuống file
-  async function saveBookmarks(listBookmark) {
-    let all = {};
-    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
-      const file = await FileSystem.readFile(
-        Dirs.CacheDir + '/bookmarks.txt',
-        'utf8',
-      );
-      if (file) all = JSON.parse(file);
-    }
-    all[route.params.screen] = listBookmark;
-    await FileSystem.writeFile(
-      Dirs.CacheDir + '/bookmarks.txt',
-      JSON.stringify(all),
-      'utf8',
-    );
-  }
-
-  // bấm sao: thêm/bỏ một Điều khỏi danh sách ghi nhớ
-  function toggleBookmark(title) {
-    const cur = bookmarksRef.current;
-    const next = cur.includes(title)
-      ? cur.filter(t => t !== title)
-      : [...cur, title];
-    bookmarksRef.current = next;
-    setBookmarks(next);
-    saveBookmarks(next);
-    Vibration.vibrate(20);
-  }
-
   const animatedForNavi = useRef(new Animated.Value(0)).current;
+
+  // Riêng cho panel trượt (Mục lục/Ghi nhớ): 0 = đóng, 1 = mở.
+  // Dùng native driver -> slide chạy trên UI thread, KHÔNG bị khựng khi JS đang
+  // bận render/expand thân luật lúc mở.
+  const panelAnim = useRef(new Animated.Value(0)).current;
+
+  const slidePanelIn = () => {
+    panelAnim.setValue(0); // luôn bắt đầu từ vị trí đóng để có hiệu ứng trượt vào
+    Animated.timing(panelAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const slidePanelOut = () => {
+    Animated.timing(panelAnim, {
+      toValue: 0,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
 
   const list = useRef(null);
   const textInputFind = useRef(null);
-  const textInputArticle = useRef(null);
   const [valueInput, setValueInput] = useState('');
   const [find, setFind] = useState(); // hiển thị trường tìm kiếm
 
@@ -246,14 +447,19 @@ export function Detail5() {
   const [Info, setInfo] = useState({});
 
   const { width, height } = Dimensions.get('window');
-  let heightDevice = height;
-  //  console.log(height);
 
   const [widthDevice, setWidthDevice] = useState(width);
-  Dimensions.addEventListener('change', ({ window: { width, height } }) => {
-    heightDevice = height;
-    setWidthDevice(width);
-  });
+  const [heightDevice, setHeightDevice] = useState(height);
+
+  // Đăng ký listener MỘT lần (trước đây gọi ngay trong thân render -> mỗi lần
+  // render lại thêm một listener mới, không gỡ -> rò rỉ + re-render dồn).
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => {
+      setWidthDevice(window.width);
+      setHeightDevice(window.height);
+    });
+    return () => sub?.remove();
+  }, []);
 
   function pushToSearch() {
     if (!go) {
@@ -356,11 +562,6 @@ export function Detail5() {
   }
 
   useEffect(() => {
-    loadBookmarks().then(listBookmark => {
-      bookmarksRef.current = listBookmark;
-      setBookmarks(listBookmark);
-    });
-
     getContentExist().then(cont => {
       // console.log('cont',cont);
 
@@ -491,7 +692,7 @@ export function Detail5() {
             }
 
             function setPositionYSearch({ y }) {
-              positionYArr.push(y + currentY - heightDevice / 3);
+              positionYArr.push(y + currentYRef.current - heightDevice / 3);
 
               positionYArr.sort((a, b) => {
                 if (a > b) {
@@ -581,7 +782,7 @@ export function Detail5() {
 
   // console.log(positionYArrArtical);
   function setPositionYArtical({ y, key3 }) {
-    const value = y + currentY - insets.top + 15;
+    const value = y + currentYRef.current - insets.top + 15;
 
     setPositionYArrArtical(prev => {
       const index = prev.findIndex(obj => Object.keys(obj)[0] === key3);
@@ -660,15 +861,6 @@ export function Detail5() {
     }
   }, [currentSearchPoint]);
 
-  let SearchArticalResult = positionYArrArtical.filter(item => {
-    let abc = inputSearchArtical;
-
-    abc = inputSearchArtical.replace(/\(/gim, '\\(');
-
-    abc = abc.replace(/\)/gim, '\\)');
-
-    return Object.keys(item)[0].match(new RegExp(abc, 'igm'));
-  });
 
   let transY = animatedForNavi.interpolate({
     inputRange: [-100, 0, 80, 90, 100],
@@ -681,14 +873,15 @@ export function Detail5() {
     ],
   });
 
-  let transX = animatedForNavi.interpolate({
-    inputRange: [-100, 0],
-    outputRange: [0, (widthDevice / 100) * 60],
+  // panelAnim: 0 = đóng (panel đẩy sang phải khuất), 1 = mở (về vị trí 0).
+  let transX = panelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [(widthDevice / 100) * 60, 0],
   });
 
-  let Opacity = animatedForNavi.interpolate({
-    inputRange: [-100, 0],
-    outputRange: [0.7, 0],
+  let Opacity = panelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 0.7],
   });
 
   let MagginBottom = animatedForNavi.interpolate({
@@ -842,7 +1035,6 @@ export function Detail5() {
   }
 
   const a = (key, i, key1, i1a, t) => {
-    console.log('a');
     onlyArticle = false;
     return Object.keys(key)[0] != '0' ? (
       <View
@@ -906,10 +1098,6 @@ export function Detail5() {
   const b = (keyA, i, keyB) => {
     // phần nếu có mục 'phần' trong văn bản
     onlyArticle = false;
-    console.log('b');
-
-    console.log('keyA', keyA);
-    console.log('keyB', keyB);
 
     return (
       <View
@@ -1025,7 +1213,6 @@ export function Detail5() {
   const c = (key, i, ObjKeys) => {
     // phần nếu chỉ có Điều ...
     // onlyArticle = true;
-    console.log('c');
     const title = Object.keys(key)[0];
     const clauses = getClauses(key[ObjKeys]);
     const dieuId = `c-${i}`;
@@ -1234,7 +1421,7 @@ export function Detail5() {
                   onScroll={event => {
                     {
                       const { y } = event.nativeEvent.contentOffset;
-                      setCurrentY(y);
+                      currentYRef.current = y;
                     }
                   }}
                   ref={list}
@@ -1299,185 +1486,26 @@ export function Detail5() {
           )}
           <>
             {showArticle && (
-              <>
-                <Animated.View
-                  style={{
-                    backgroundColor: 'rgb(245,245,247)',
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    display: 'flex',
-                    position: 'absolute',
-                    opacity: Opacity,
-                  }}
-                >
-                  <TouchableOpacity //overlay
-                    style={{
-                      left: 0,
-                      right: 0,
-                      top: 0,
-                      bottom: 0,
-                      display: 'flex',
-                      position: 'absolute',
-                    }}
-                    onPress={() => {
-                      // Keyboard.dismiss()
-                      let timeOut = setTimeout(() => {
-                        setShowArticle(false);
-                        return () => {};
-                      }, 600);
-                      Animated.timing(animatedForNavi, {
-                        toValue: !showArticle ? -100 : 0,
-                        duration: 600,
-                        useNativeDriver: false,
-                      }).start();
-                    }}
-                  ></TouchableOpacity>
-                </Animated.View>
-
-                <Animated.View
-                  style={{
-                    ...styles.listArticle,
-                    width: (widthDevice / 100) * 60,
-                    transform: [{ translateX: transX }],
-                    marginBottom:
-                      Platform.OS === 'ios'
-                        ? 15 + insets.bottom
-                        : 35 + insets.bottom,
-                    marginTop: insets.top + 50,
-                  }}
-                >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      backgroundColor: 'black',
-                      height: 50,
-                    }}
-                  >
-                    <TextInput
-                      ref={textInputArticle}
-                      onChangeText={text => setInputSearchArtical(text)}
-                      selectTextOnFocus={true}
-                      value={inputSearchArtical}
-                      style={{
-                        paddingLeft: 10,
-                        paddingRight: 10,
-                        color: 'white',
-                        width: '85%',
-                        alignItems: 'center',
-                      }}
-                      placeholder=" Nhập từ điều luật ..."
-                      placeholderTextColor={'gray'}
-                      // onTouchEnd={() => {
-                      //   if (textInputFocus) {
-                      //     textInputArticle.current.blur();
-                      //     setTextInputFocus(false);
-                      //   } else {
-                      //     setTextInputFocus(true);
-                      //     textInputArticle.current.focus();
-                      //   }}}
-                    ></TextInput>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setInputSearchArtical('');
-                        textInputArticle.current.focus();
-                      }}
-                      style={{
-                        width: '15%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      {inputSearchArtical && (
-                        <Text
-                          style={{
-                            height: 20,
-                            width: 20,
-                            color: 'white',
-                            textAlign: 'center',
-                            verticalAlign: 'middle',
-                            backgroundColor: 'gray',
-                            borderRadius: 25,
-                          }}
-                        >
-                          X
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView
-                  // keyboardShouldPersistTaps="handled"
-                  >
-                    <View style={{ height: 7 }}>
-                      {
-                        // đây là hàng ảo để thêm margin
-                      }
-                    </View>
-                    {(panelMode === 'bookmark'
-                      ? positionYArrArtical.filter(o =>
-                          bookmarks.includes(Object.keys(o)[0]),
-                        )
-                      : SearchArticalResult || positionYArrArtical
-                    ).map((key, i) => {
-                      if (Object.keys(key) != ' ') {
-                        const title = Object.keys(key)[0];
-                        return (
-                          <View
-                            key={`${i}SearchArtical`}
-                            style={{
-                              ...styles.listItem,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <TouchableOpacity
-                              style={{ flex: 1 }}
-                              onPress={() => {
-                                setShowArticle(false);
-                                list.current.scrollTo({
-                                  y: Object.values(key) - 55,
-                                });
-                                Animated.timing(animatedForNavi, {
-                                  toValue: !showArticle ? -100 : 0,
-                                  duration: 600,
-                                  useNativeDriver: false,
-                                }).start();
-                              }}
-                            >
-                              <Text style={styles.listItemText}>{title}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => toggleBookmark(title)}
-                              style={{
-                                paddingLeft: 8,
-                                paddingRight: 4,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Ionicons
-                                name={
-                                  bookmarks.includes(title)
-                                    ? 'star'
-                                    : 'star-outline'
-                                }
-                                style={{
-                                  fontSize: 20,
-                                  color: bookmarks.includes(title)
-                                    ? '#FFB300'
-                                    : 'gray',
-                                }}
-                              ></Ionicons>
-                            </TouchableOpacity>
-                          </View>
-                        );
-                      }
-                    })}
-                  </ScrollView>
-                </Animated.View>
-              </>
+              <SidePanel
+                mode={panelMode}
+                positions={positionYArrArtical}
+                transX={transX}
+                Opacity={Opacity}
+                widthDevice={widthDevice}
+                insets={insets}
+                screen={route.params.screen}
+                onClose={() => {
+                  slidePanelOut();
+                  setTimeout(() => {
+                    setShowArticle(false);
+                  }, 600);
+                }}
+                onSelect={y => {
+                  panelAnim.setValue(0); // đóng ngay -> chỉ cần reset cho lần mở sau
+                  setShowArticle(false);
+                  list.current.scrollTo({ y: y - 55 });
+                }}
+              />
             )}
           </>
           <View
@@ -1584,18 +1612,22 @@ export function Detail5() {
                   // đang mở đúng chế độ 'article' -> đóng; ngược lại -> mở chế độ article
                   const willClose = showArticle && panelMode === 'article';
                   if (willClose) {
+                    slidePanelOut();
                     let timeOut = setTimeout(() => {
                       setShowArticle(false);
                       return () => {};
                     }, 600);
                   } else {
+                    if (!showArticle) slidePanelIn(); // đang đóng -> trượt vào; đang mở (đổi mode) -> giữ nguyên
                     setPanelMode('article');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
+                  // đưa search bar/functab về trạng thái nghỉ (0); không còn dùng
+                  // -100 vì panel đã tách sang panelAnim (native).
                   Animated.timing(animatedForNavi, {
-                    toValue: willClose ? 0 : -100,
+                    toValue: 0,
                     duration: 600,
                     useNativeDriver: false,
                   }).start();
@@ -1621,18 +1653,20 @@ export function Detail5() {
                   // đang mở đúng chế độ 'bookmark' -> đóng; ngược lại -> mở chế độ ghi nhớ
                   const willClose = showArticle && panelMode === 'bookmark';
                   if (willClose) {
+                    slidePanelOut();
                     let timeOut = setTimeout(() => {
                       setShowArticle(false);
                       return () => {};
                     }, 600);
                   } else {
+                    if (!showArticle) slidePanelIn(); // đang đóng -> trượt vào; đang mở (đổi mode) -> giữ nguyên
                     setPanelMode('bookmark');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
                   Animated.timing(animatedForNavi, {
-                    toValue: willClose ? 0 : -100,
+                    toValue: 0,
                     duration: 600,
                     useNativeDriver: false,
                   }).start();
