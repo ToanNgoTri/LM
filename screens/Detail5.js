@@ -63,6 +63,10 @@ export function Detail5() {
 
   const [exists, setExists] = useState(false);
 
+  const [bookmarks, setBookmarks] = useState([]); // các Điều đã ghi nhớ (mảng title)
+  const bookmarksRef = useRef([]); // tránh đọc state cũ khi bấm sao nhanh
+  const [panelMode, setPanelMode] = useState('article'); // 'article' | 'bookmark'
+
   const dispatch = useDispatch();
 
   const route = useRoute();
@@ -160,6 +164,68 @@ export function Detail5() {
       JSON.stringify(NewOrderArray),
       'utf8',
     );
+
+    // dọn luôn danh sách ghi nhớ của luật này
+    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
+      const FileBookmarks = await FileSystem.readFile(
+        Dirs.CacheDir + '/bookmarks.txt',
+        'utf8',
+      );
+      if (FileBookmarks) {
+        let allBookmarks = JSON.parse(FileBookmarks);
+        delete allBookmarks[route.params.screen];
+        await FileSystem.writeFile(
+          Dirs.CacheDir + '/bookmarks.txt',
+          JSON.stringify(allBookmarks),
+          'utf8',
+        );
+      }
+    }
+  }
+
+  // đọc danh sách Điều đã ghi nhớ của luật hiện tại
+  async function loadBookmarks() {
+    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
+      const file = await FileSystem.readFile(
+        Dirs.CacheDir + '/bookmarks.txt',
+        'utf8',
+      );
+      if (file) {
+        const all = JSON.parse(file);
+        return all[route.params.screen] || [];
+      }
+    }
+    return [];
+  }
+
+  // ghi danh sách ghi nhớ (theo screen) xuống file
+  async function saveBookmarks(listBookmark) {
+    let all = {};
+    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
+      const file = await FileSystem.readFile(
+        Dirs.CacheDir + '/bookmarks.txt',
+        'utf8',
+      );
+      if (file) all = JSON.parse(file);
+    }
+    all[route.params.screen] = listBookmark;
+    await FileSystem.writeFile(
+      Dirs.CacheDir + '/bookmarks.txt',
+      JSON.stringify(all),
+      'utf8',
+    );
+  }
+
+  // bấm sao: thêm/bỏ một Điều khỏi danh sách ghi nhớ
+  function toggleBookmark(title) {
+    const cur = bookmarksRef.current;
+    const next = cur.includes(title)
+      ? cur.filter(t => t !== title)
+      : [...cur, title];
+    bookmarksRef.current = next;
+    setBookmarks(next);
+    saveBookmarks(next);
+    Vibration.vibrate(20);
   }
 
   const animatedForNavi = useRef(new Animated.Value(0)).current;
@@ -290,6 +356,11 @@ export function Detail5() {
   }
 
   useEffect(() => {
+    loadBookmarks().then(listBookmark => {
+      bookmarksRef.current = listBookmark;
+      setBookmarks(listBookmark);
+    });
+
     getContentExist().then(cont => {
       // console.log('cont',cont);
 
@@ -1344,13 +1415,25 @@ export function Detail5() {
                         // đây là hàng ảo để thêm margin
                       }
                     </View>
-                    {(SearchArticalResult || positionYArrArtical).map(
-                      (key, i) => {
-                        if (Object.keys(key) != ' ') {
-                          return (
+                    {(panelMode === 'bookmark'
+                      ? positionYArrArtical.filter(o =>
+                          bookmarks.includes(Object.keys(o)[0]),
+                        )
+                      : SearchArticalResult || positionYArrArtical
+                    ).map((key, i) => {
+                      if (Object.keys(key) != ' ') {
+                        const title = Object.keys(key)[0];
+                        return (
+                          <View
+                            key={`${i}SearchArtical`}
+                            style={{
+                              ...styles.listItem,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                            }}
+                          >
                             <TouchableOpacity
-                              key={`${i}SearchArtical`}
-                              style={styles.listItem}
+                              style={{ flex: 1 }}
                               onPress={() => {
                                 setShowArticle(false);
                                 list.current.scrollTo({
@@ -1363,14 +1446,35 @@ export function Detail5() {
                                 }).start();
                               }}
                             >
-                              <Text style={styles.listItemText}>
-                                {Object.keys(key)}
-                              </Text>
+                              <Text style={styles.listItemText}>{title}</Text>
                             </TouchableOpacity>
-                          );
-                        }
-                      },
-                    )}
+                            <TouchableOpacity
+                              onPress={() => toggleBookmark(title)}
+                              style={{
+                                paddingLeft: 8,
+                                paddingRight: 4,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Ionicons
+                                name={
+                                  bookmarks.includes(title)
+                                    ? 'star'
+                                    : 'star-outline'
+                                }
+                                style={{
+                                  fontSize: 20,
+                                  color: bookmarks.includes(title)
+                                    ? '#FFB300'
+                                    : 'gray',
+                                }}
+                              ></Ionicons>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      }
+                    })}
                   </ScrollView>
                 </Animated.View>
               </>
@@ -1397,8 +1501,17 @@ export function Detail5() {
                     return () => {};
                   }, 600);
 
-                  setTittleArray([]);
-                  Shrink();
+                  // đang thu gọn TOÀN BỘ -> mở ra; còn lại (đang mở hết hoặc mở
+                  // một phần) -> thu gọn toàn bộ.
+                  const isFullyCollapsed =
+                    TopUnitCount > 0 && tittleArray.length >= TopUnitCount;
+                  if (isFullyCollapsed) {
+                    setTittleArray([]);
+                    setTittleArray2([]);
+                  } else {
+                    setTittleArray([]);
+                    Shrink();
+                  }
 
                   Animated.timing(animatedForNavi, {
                     toValue: 0,
@@ -1408,35 +1521,12 @@ export function Detail5() {
                   }).start();
                 }}
               >
-                {/* <Text style={styles.innerTab}>S</Text> */}
                 <Ionicons
-                  name="chevron-collapse-outline"
-                  style={styles.innerTab}
-                ></Ionicons>
-              </TouchableOpacity>
-            )}
-            {!onlyArticle && (
-              <TouchableOpacity
-                style={styles.tab}
-                onPress={() => {
-                  setTittleArray([]);
-                  setTittleArray2([]);
-                  setFind(false);
-                  let timeOut = setTimeout(() => {
-                    setShowArticle(false);
-                    return () => {};
-                  }, 600);
-
-                  Animated.timing(animatedForNavi, {
-                    toValue: 0,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-              >
-                {/* <Text style={styles.innerTab}>E</Text> */}
-                <Ionicons
-                  name="chevron-expand-outline"
+                  name={
+                    TopUnitCount > 0 && tittleArray.length >= TopUnitCount
+                      ? 'chevron-expand-outline'
+                      : 'chevron-collapse-outline'
+                  }
                   style={styles.innerTab}
                 ></Ionicons>
               </TouchableOpacity>
@@ -1491,18 +1581,21 @@ export function Detail5() {
               style={styles.tab}
               onPress={() => {
                 if (list.current) {
-                  if (showArticle) {
+                  // đang mở đúng chế độ 'article' -> đóng; ngược lại -> mở chế độ article
+                  const willClose = showArticle && panelMode === 'article';
+                  if (willClose) {
                     let timeOut = setTimeout(() => {
                       setShowArticle(false);
                       return () => {};
                     }, 600);
                   } else {
+                    setPanelMode('article');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
                   Animated.timing(animatedForNavi, {
-                    toValue: !showArticle ? -100 : 0,
+                    toValue: willClose ? 0 : -100,
                     duration: 600,
                     useNativeDriver: false,
                   }).start();
@@ -1514,7 +1607,50 @@ export function Detail5() {
             >
               <Ionicons
                 name="menu-outline"
-                style={showArticle ? styles.ActiveInner : styles.innerTab}
+                style={
+                  showArticle && panelMode === 'article'
+                    ? styles.ActiveInner
+                    : styles.innerTab
+                }
+              ></Ionicons>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => {
+                if (list.current) {
+                  // đang mở đúng chế độ 'bookmark' -> đóng; ngược lại -> mở chế độ ghi nhớ
+                  const willClose = showArticle && panelMode === 'bookmark';
+                  if (willClose) {
+                    let timeOut = setTimeout(() => {
+                      setShowArticle(false);
+                      return () => {};
+                    }, 600);
+                  } else {
+                    setPanelMode('bookmark');
+                    setShowArticle(true);
+                  }
+                  setFind(false);
+                  Keyboard.dismiss();
+                  Animated.timing(animatedForNavi, {
+                    toValue: willClose ? 0 : -100,
+                    duration: 600,
+                    useNativeDriver: false,
+                  }).start();
+
+                  setTittleArray([]);
+                  setTittleArray2([]);
+                }
+              }}
+            >
+              <Ionicons
+                name={
+                  showArticle && panelMode === 'bookmark' ? 'star' : 'star-outline'
+                }
+                style={
+                  showArticle && panelMode === 'bookmark'
+                    ? styles.ActiveInner
+                    : styles.innerTab
+                }
               ></Ionicons>
             </TouchableOpacity>
           </View>
