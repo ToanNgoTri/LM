@@ -717,7 +717,12 @@ export function Detail5() {
   // TAP / LONG-PRESS: chọn hoặc bỏ chọn khoản này (cộng dồn trong cùng điều)
   function toggleClause(dieuId, title, idx, clauseText) {
     const cur = selectedRef.current;
-    const base = dieuId === cur.dieuId ? cur.clauses : []; // khác điều -> bắt đầu lại
+    // đang chọn ở điều khác -> chỉ bỏ chọn (không chọn khoản vừa nhấn)
+    if (cur.clauses.length && dieuId !== cur.dieuId) {
+      applySelection(dieuId, title, []);
+      return;
+    }
+    const base = dieuId === cur.dieuId ? cur.clauses : [];
     const exists = base.some(c => c.idx === idx);
     const next = exists
       ? base.filter(c => c.idx !== idx)
