@@ -1895,7 +1895,7 @@ export function Detail5() {
             <ScrollView
               style={{
                 backgroundColor: '#EEEFE4',
-                paddingTop: insets.top, 
+                paddingTop: Platform.OS === 'ios' ? 0 : insets.top,
               }}
             >
               <View style={{ paddingBottom: 30 }}>
