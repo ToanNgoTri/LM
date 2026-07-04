@@ -767,22 +767,14 @@ export function Detail5() {
       const index = prev.findIndex(obj => Object.keys(obj)[0] === key3);
 
       // đã tồn tại → cập nhật
+      // value là vị trí TUYỆT ĐỐI trong nội dung cuộn (pageY + scroll offset),
+      // nên chỉ cập nhật chính item này. KHÔNG được dời các item phía sau theo
+      // delta: mỗi item tự đo lại vị trí tuyệt đối của mình khi onLayout chạy.
+      // Việc dời theo delta trước đây làm sai vị trí của các item ở phần đang
+      // mở khi một phần khác được thu gọn/mở lại.
       if (index !== -1) {
         const newArr = [...prev];
-
-        const oldValue = Object.values(prev[index])[0];
-        const delta = value - oldValue;
-
-        // update chính nó
         newArr[index] = { [key3]: value };
-
-        // update các item phía sau
-        for (let i = index + 1; i < newArr.length; i++) {
-          const k = Object.keys(newArr[i])[0];
-          const v = Object.values(newArr[i])[0];
-          newArr[i] = { [k]: v + delta };
-        }
-
         return newArr;
       }
 
@@ -790,6 +782,41 @@ export function Detail5() {
       return [...prev, { [key3]: value }];
     });
   }
+
+  // Lưu node gốc của từng điều theo tiêu đề để có thể ĐO LẠI vị trí bất cứ lúc
+  // nào (onLayout chỉ tự chạy khi layout của điều so với cha nó đổi — mở/thu gọn
+  // một phần khác KHÔNG kích hoạt onLayout cho các điều bên dưới).
+  const articleNodes = useRef({});
+
+  function measureArticle(node, key3) {
+    if (!node || !node.measure) return;
+    articleNodes.current[key3] = node;
+    node.measure((x, y, width, height, pageX, pageY) => {
+      setPositionYArtical({ y: y + pageY, key3 });
+    });
+  }
+
+  // Đo lại vị trí TẤT CẢ các điều — gọi khi panel mở (lúc này mọi phần đều đã
+  // bung ra và layout ổn định) để mọi vị trí đều khớp trạng thái expand hiện tại.
+  function remeasureAllArticles() {
+    Object.keys(articleNodes.current).forEach(key3 => {
+      const node = articleNodes.current[key3];
+      if (node && node.measure) {
+        node.measure((x, y, width, height, pageX, pageY) => {
+          setPositionYArtical({ y: y + pageY, key3 });
+        });
+      }
+    });
+  }
+
+  // Khi mở panel (article/bookmark), toàn bộ nội dung được ép bung ra
+  // (showArticle || ...). Chờ layout bung xong rồi đo lại toàn bộ vị trí điều.
+  useEffect(() => {
+    if (showArticle) {
+      const t = setTimeout(remeasureAllArticles, 300);
+      return () => clearTimeout(t);
+    }
+  }, [showArticle]);
 
   TopUnitCount = Content && Object.keys(Content).length;
 
@@ -1053,14 +1080,9 @@ export function Detail5() {
                   // opacity: fadeAnimation,
                   // borderRadius: 4,
                 }}
-                onLayout={event => {
-                  event.target.measure((x, y, width, height, pageX, pageY) => {
-                    setPositionYArtical({
-                      y: y + pageY,
-                      key3: Object.keys(key2)[0],
-                    });
-                  });
-                }}
+                onLayout={event =>
+                  measureArticle(event.target, Object.keys(key2)[0])
+                }
               >
                 {Object.keys(key2) == ' ' || (
                   <Pressable
@@ -1158,16 +1180,9 @@ export function Detail5() {
                 }
               >
                 <View
-                  onLayout={event => {
-                    event.target.measure(
-                      (x, y, width, height, pageX, pageY) => {
-                        setPositionYArtical({
-                          y: y + pageY,
-                          key3: Object.keys(keyC)[0],
-                        });
-                      },
-                    );
-                  }}
+                  onLayout={event =>
+                    measureArticle(event.target, Object.keys(keyC)[0])
+                  }
                   // style={go ? {width: '100%'} : {width: '99%'}}
                 >
                   {(() => {
@@ -1222,14 +1237,7 @@ export function Detail5() {
               // opacity: fadeAnimation,
               // borderRadius: 4,
             }}
-            onLayout={event => {
-              event.target.measure((x, y, width, height, pageX, pageY) => {
-                setPositionYArtical({
-                  y: y + pageY,
-                  key3: ObjKeys,
-                });
-              });
-            }}
+            onLayout={event => measureArticle(event.target, ObjKeys)}
           >
             <Pressable
               onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
