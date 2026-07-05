@@ -24,7 +24,8 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Sortable, SortableItem } from 'react-native-reanimated-dnd';
+import { SortableItem } from 'react-native-reanimated-dnd';
+import { SortableLawList } from './components/SortableLawList';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 
 // Sortable chạy ở chế độ chiều cao ĐỘNG (enableDynamicHeights): mỗi card tự
@@ -142,6 +143,36 @@ export default function Home({}) {
   );
 
   const keyExtractor = useCallback(item => item.id, []);
+
+  // Ref FlatList kết quả tìm kiếm & ref danh sách kéo-thả (SortableLawList).
+  const searchListRef = useRef(null);
+  const sortableRef = useRef(null);
+
+  // Key để remount danh sách kéo-thả khi TẬP DỮ LIỆU đổi (thay cho cơ chế
+  // key = dataHash của <Sortable> gốc): ghép chuỗi id theo đúng thứ tự. Kéo-thả
+  // KHÔNG gọi setData nên không remount -> cuộn tay không bị ảnh hưởng.
+  const sortableKey = useMemo(
+    () => sortableData.map(it => it.id).join('|'),
+    [sortableData],
+  );
+
+  // Expose global.HomeRef để nhấn lần 2 vào bottom tab "Đã tải xuống" cuộn lên đầu.
+  // - Đang tìm kiếm     -> FlatList cuộn về đầu.
+  // - Danh sách kéo-thả -> SortableLawList cuộn về đầu MƯỢT (animated).
+  useEffect(() => {
+    global.HomeRef = {
+      scrollToOffset: opts => {
+        if (searchListRef.current) {
+          searchListRef.current.scrollToOffset(opts ?? { offset: 0 });
+        } else {
+          sortableRef.current?.scrollToOffset({ offset: 0 });
+        }
+      },
+    };
+    return () => {
+      global.HomeRef = null;
+    };
+  }, []);
 
   useEffect(() => {
     // console.log('Object.keys(Info)', Object.keys(Info).length);
@@ -416,6 +447,7 @@ export default function Home({}) {
         // Đang tìm kiếm: danh sách thường, KHÔNG kéo-thả
         <View style={{ flex: 1 }}>
           <FlatList
+            ref={searchListRef}
             data={data}
             keyExtractor={item => Object.keys(item)[0]}
             keyboardShouldPersistTaps="handled"
@@ -480,13 +512,14 @@ export default function Home({}) {
               đo của thư viện vốn không kích hoạt onLayout lúc mount).
               useFlatList={false}: render hết item một lần (danh sách luật có hạn). */}
           {allMeasured && (
-            <Sortable
+            <SortableLawList
+              key={sortableKey}
+              ref={sortableRef}
               data={sortableData}
               renderItem={renderSortableItem}
               itemKeyExtractor={keyExtractor}
               itemHeight={getItemHeight}
               estimatedItemHeight={ITEM_HEIGHT + GAP}
-              useFlatList={false}
               style={{ flex: 1 }}
             />
           )}

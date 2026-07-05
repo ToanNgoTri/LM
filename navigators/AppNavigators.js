@@ -140,9 +140,9 @@ function CustomTabBar({ navigation, state, anims, animateTo, tabHeight, tabWidth
           anim={anims[i]}
           onPress={() => {
             if (idx === i) {
-              if (i === 0 && HomeScreen?.homeRef) HomeScreen.homeRef.scrollToOffset({ offset: 0 });
+              if (i === 0 && global.HomeRef) global.HomeRef.scrollToOffset({ offset: 0 });
               if (i === 1 && global.SearchLawRef) global.SearchLawRef.scrollToOffset({ offset: 0 });
-              if (i === 2 && global.SearchContentRef) global.SearchContentRef.scrollToOffset({ offset: 0 });
+              if (i === 2 && global.AIChatRef) global.AIChatRef.scrollToOffset({ offset: 0 });
               return;
             }
             animateTo(i);

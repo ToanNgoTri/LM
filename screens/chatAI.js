@@ -179,6 +179,16 @@ export const AIChatScreen = () => {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 80);
   }, []);
 
+  // Ref ổn định: giữ flatListRef nội bộ + expose global.AIChatRef để nhấn lần 2
+  // vào bottom tab "Chat AI" cuộn lên đầu.
+  const setListRef = useCallback(ref => {
+    flatListRef.current = ref;
+    global.AIChatRef = ref;
+  }, []);
+  useEffect(() => () => {
+    global.AIChatRef = null;
+  }, []);
+
   const charCountRef = useRef(0);
 
   // Xử lý từng ký tự từ queue với setTimeout — rung theo từng char
@@ -461,7 +471,7 @@ try {
       <View style={styles.headerDivider} />
 
       <FlatList
-        ref={flatListRef}
+        ref={setListRef}
         data={messages}
         renderItem={renderMessage}
         keyExtractor={keyExtractor}

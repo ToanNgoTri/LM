@@ -775,6 +775,38 @@ export function Detail1({}) {
             }
           />
         )}
+
+        {/* Nút cuộn về đầu: mũi tên trong hình tròn, opacity < 1 */}
+        {LawFilted && Object.keys(LawFilted).length > 0 && (
+          <TouchableOpacity
+            onPress={() =>
+              FlatListToScroll.current?.scrollToOffset({
+                offset: 0,
+                animated: true,
+              })
+            }
+            activeOpacity={0.8}
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: tabBarHeight + 16,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: 'gray',
+              opacity: 0.6,
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: 'black',
+              shadowOpacity: 0.3,
+              shadowRadius: 3,
+              shadowOffset: { width: 0, height: 2 },
+              elevation: 4,
+            }}
+          >
+            <Ionicons name="arrow-up" style={{ color: 'white', fontSize: 26 }} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {showFilter && (
