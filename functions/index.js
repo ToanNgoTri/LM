@@ -32,11 +32,14 @@ function buildDateCondition(dateFrom, dateTo) {
 
 // Điều kiện lọc theo cơ quan ban hành: mã viết tắt nằm trong số hiệu (_id),
 // ví dụ 221/2026/NĐ-CP -> CP, 11/2026/TT-BCA -> BCA.
+// Riêng Quốc hội, số hiệu có số khóa đi kèm (59/2020/QH14, 80/2025/QH15),
+// nên cho phép có chữ số ngay sau mã; chỉ chặn khi theo sau là chữ cái
+// để tránh khớp nhầm với mã dài hơn.
 function buildAgencyCondition(agencies) {
   if (!Array.isArray(agencies) || !agencies.length) return null;
   return {
     $or: agencies.map(code => ({
-      _id: new RegExp(`[-/]${escapeRegex(code)}(?![A-Za-z0-9])`, 'i'),
+      _id: new RegExp(`[-/]${escapeRegex(code)}\\d*(?![A-Za-z])`, 'i'),
     })),
   };
 }

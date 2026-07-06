@@ -67,6 +67,9 @@ export function formatDateInput(text) {
 
 // Kiểm tra văn bản (tên + số hiệu) có thuộc một trong các mã cơ quan đã chọn.
 // codes rỗng -> không lọc theo cơ quan (trả về true).
+// Số hiệu của Quốc hội có số khóa đi kèm (QH14, QH15), nên mã cơ quan có thể
+// nằm ở đầu token và theo sau là chữ số. So khớp: token bằng mã, hoặc token là
+// mã + chuỗi chữ số (QH + 14).
 export function lawMatchesAgencies(haystack, codes) {
   if (!codes || !codes.length) return true;
   const tokens = (haystack || '')
@@ -74,5 +77,8 @@ export function lawMatchesAgencies(haystack, codes) {
     .toUpperCase()
     .split(/[^0-9A-ZÀ-Ỹ]+/)
     .filter(Boolean);
-  return codes.some(code => tokens.includes(code.toUpperCase()));
+  return codes.some(code => {
+    const c = code.toUpperCase();
+    return tokens.some(t => t === c || new RegExp(`^${c}\\d+$`).test(t));
+  });
 }
