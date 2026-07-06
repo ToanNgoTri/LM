@@ -228,9 +228,10 @@ yield put(handle1(b))
 
 
   export function* mySaga3(state,action){
+    try{
     yield put(loader3())
-  
-  
+
+
       let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/getlastedlaws`,{
         method: 'POST',
         headers: {
@@ -239,18 +240,22 @@ yield put(handle1(b))
         },
         // body:JSON.stringify({screen:1})
       })
-      
+
       let b = yield info.json()
-  
-  
+
+
       yield put(handle3({b}))
+    }catch(e){
+      yield put(handle3({b:[]}))
+    }
     }
 
 
     export function* mySaga4(state,action){
+      try{
       yield put(loader4())
-    
-    
+
+
         let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/countAllLaw`,{
           method: 'POST',
           headers: {
@@ -259,12 +264,14 @@ yield put(handle1(b))
           },
           // body:JSON.stringify({screen:1})
         })
-        
+
         let b = yield info.json()
-    
-    
+
+
         yield put(handle4({b}))
+      }catch(e){
       }
+    }
   
   
       export function* mySaga5(state,action){

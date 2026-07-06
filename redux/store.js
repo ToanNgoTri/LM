@@ -4,16 +4,32 @@ const sagaMiddleware = createSagaMiddleware.default();
 import { read,searchContent,getlastedlaws,getCountLaw,searchLawDescription,filterUI} from './fetchData'
 
 
-import {all,call,takeEvery} from 'redux-saga/effects'
+import {all,call,spawn,takeEvery} from 'redux-saga/effects'
 import {saga,saga1,saga3,saga4,saga5,rootReducer} from './fetchData'
 import {loader,handle} from './fetchData'
 
 // const sagaMiddleware = createSagaMiddleware()
 
+// Bọc mỗi watcher trong spawn + vòng lặp tự khởi động lại: nếu 1 saga lỗi không
+// bắt được thì spawn không cho lỗi lan lên root (không giết các watcher khác),
+// và vòng while khởi động lại chính watcher đó. Nhờ vậy 'searchContent' /
+// 'searchLawDescription' không bao giờ ngừng lắng nghe vì 1 saga khác chết.
 export function* rootSaga(){
-  yield all([
-    saga4(),saga3(),saga1(),saga(),saga5()
-  ])
+  const sagas = [saga4, saga3, saga1, saga, saga5];
+  yield all(
+    sagas.map(s =>
+      spawn(function* () {
+        while (true) {
+          try {
+            yield call(s);
+            break;
+          } catch (e) {
+            console.error('Saga crashed, restarting:', e);
+          }
+        }
+      }),
+    ),
+  );
 }
 
 
