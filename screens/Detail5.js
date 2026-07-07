@@ -1908,7 +1908,7 @@ export function Detail5() {
                 paddingTop: Platform.OS === 'ios' ? 0 : insets.top,
               }}
             >
-              <View style={{ paddingBottom: 30 }}>
+              <View style={{ paddingBottom: 70 }}>
                 <View
                   style={{
                     // marginTop:20,
