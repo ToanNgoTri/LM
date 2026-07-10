@@ -23,6 +23,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import VersionCheck from 'react-native-version-check';
+import { SubscriptionProvider } from './subscription/SubscriptionContext';
 const BoxInHomeScreen = createContext();
 // const InfoDownloaded = createContext(); //
 const RefOfHome = createContext(); //
@@ -213,6 +214,7 @@ function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
    <SafeAreaView  style={{ flex: 1 }} edges={[Platform.OS === 'ios' ? null : null]}>
         <Provider store={store}>
+          <SubscriptionProvider>
           <BoxInHomeScreen.Provider
             value={{ showBoxInHomeScreen, updateShowBoxInHomeScreen }}
           >
@@ -582,6 +584,7 @@ function App() {
               </View>
             </RefOfHome.Provider>
           </BoxInHomeScreen.Provider>
+          </SubscriptionProvider>
         </Provider>
         <Toast config={toastConfig} />
       </SafeAreaView>

@@ -190,15 +190,18 @@ export const askLawAI = onRequest(
     if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
-    const { question, history = [] } = req.body;
+    const { question, history = [], plan = 'free' } = req.body;
     if (!question) { res.status(400).json({ error: 'Missing question' }); return; }
+
+    const isPremium = plan === 'premium';
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const MODELS = [
+    // Model miễn phí (mặc định) cho người dùng bản Free.
+    const FREE_MODELS = [
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
       'qwen/qwen3-next-80b-a3b-instruct:free',
@@ -206,6 +209,16 @@ export const askLawAI = onRequest(
       'meta-llama/llama-3.3-70b-instruct:free',
       'meta-llama/llama-3.2-3b-instruct:free',
     ];
+
+    // Model trả phí (chất lượng cao hơn) cho người dùng Premium.
+    // Vẫn giữ fallback sang model free ở cuối để không bao giờ trả lỗi trắng.
+    const PREMIUM_MODELS = [
+      ...FREE_MODELS,
+      'qwen/qwen-2.5-7b-instruct'
+    ];
+
+    const MODELS = isPremium ? PREMIUM_MODELS : FREE_MODELS;
+    console.log(`Plan: ${plan} → dùng ${MODELS.length} model`);
 
     try {
       // ── BƯỚC 1: Embed câu hỏi ────────────────────────────────────────

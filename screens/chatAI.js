@@ -17,6 +17,8 @@ import {
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+import { useSubscription } from '../subscription/SubscriptionContext';
+import { PaywallModal } from '../subscription/PaywallModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -163,6 +165,15 @@ const MessageBubble = memo(({ item }) => {
 export const AIChatScreen = () => {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
+
+  const { isPremium, planLabel, expiryDate } = useSubscription();
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  // Ref để streamAIResponse luôn đọc được trạng thái premium mới nhất
+  // mà không cần đưa isPremium vào dependency của useCallback.
+  const isPremiumRef = useRef(isPremium);
+  useEffect(() => {
+    isPremiumRef.current = isPremium;
+  }, [isPremium]);
 
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [inputText, setInputText] = useState('');
@@ -374,7 +385,13 @@ try {
     };
 
     xhr.timeout = 60000;
-    xhr.send(JSON.stringify({ question: userText, history }));
+    xhr.send(
+      JSON.stringify({
+        question: userText,
+        history,
+        plan: isPremiumRef.current ? 'premium' : 'free',
+      }),
+    );
   }, [enqueueChunk, scrollToBottom]);
 
   const handleSend = useCallback(() => {
@@ -432,6 +449,42 @@ try {
     >
       <StatusBar barStyle="light-content" backgroundColor="#0D0D14" />
 
+      <View style={styles.topBar}>
+        <View style={styles.topBarLeft}>
+          <View style={styles.headerAvatar}>
+            <Ionicons name="sparkles" size={16} color="#fff" />
+          </View>
+          <Text style={styles.headerTitle}>Trợ lý Luật AI</Text>
+        </View>
+
+        {isPremium ? (
+          <View style={styles.premiumPill}>
+            <Ionicons name="diamond" size={12} color="#FFD479" />
+            <Text style={styles.premiumPillText}>
+              Premium{planLabel ? ` · ${planLabel}` : ''}
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.freePill}
+            activeOpacity={0.8}
+            onPress={() => setPaywallVisible(true)}
+          >
+            <Text style={styles.freePillText}>Bản Free</Text>
+            <View style={styles.upgradeChip}>
+              <Ionicons name="sparkles" size={11} color="#fff" />
+              <Text style={styles.upgradeChipText}>Nâng cấp</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {isPremium && expiryDate && (
+        <Text style={styles.expiryText}>
+          Hiệu lực đến {expiryDate.toLocaleDateString('vi-VN')}
+        </Text>
+      )}
+
       <View style={styles.inputBar}>
         <View style={styles.inputRow}>
           <TextInput
@@ -481,6 +534,11 @@ try {
         onScrollBeginDrag={Keyboard.dismiss}
         keyboardShouldPersistTaps="handled"
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+      />
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
       />
     </View>
   );
@@ -537,6 +595,58 @@ const styles = StyleSheet.create({
   streamingText: { color: '#22D3A0', fontSize: 11, fontWeight: '500' },
 
   headerDivider: { height: 1, backgroundColor: '#1E1E30' },
+
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  premiumPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,212,121,0.12)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,212,121,0.35)',
+  },
+  premiumPillText: { color: '#FFD479', fontSize: 12, fontWeight: '700' },
+  freePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 12,
+    paddingRight: 5,
+    paddingVertical: 5,
+    backgroundColor: '#1A1A2E',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#252540',
+  },
+  freePillText: { color: '#9A9AB8', fontSize: 12, fontWeight: '600' },
+  upgradeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#6C63FF',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  upgradeChipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  expiryText: {
+    color: '#5A5A78',
+    fontSize: 11,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    textAlign: 'right',
+  },
 
   listContent: { paddingHorizontal: 16, paddingTop: 12 },
 
