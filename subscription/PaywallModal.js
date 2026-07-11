@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Linking,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +18,13 @@ const BENEFITS = [
   'Ưu tiên xử lý, hạn chế nghẽn khi hệ thống bận',
   'Câu trả lời dài và chi tiết hơn',
 ];
+
+// Bắt buộc theo App Store Guideline 3.1.2(c): paywall phải có link hoạt động
+// tới Điều khoản sử dụng (EULA) và Chính sách bảo mật.
+const TERMS_URL = 'https://project2-197c0.web.app/terms.html';
+const PRIVACY_URL = 'https://project2-197c0.web.app/privacy.html';
+
+const openLink = url => Linking.openURL(url).catch(() => {});
 
 export const PaywallModal = ({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
@@ -133,6 +141,16 @@ export const PaywallModal = ({ visible, onClose }) => {
               quản lý đăng ký của cửa hàng. Thanh toán sẽ được tính vào tài
               khoản cửa hàng của bạn.
             </Text>
+
+            <View style={styles.linksRow}>
+              <TouchableOpacity onPress={() => openLink(TERMS_URL)} hitSlop={8}>
+                <Text style={styles.linkText}>Điều khoản sử dụng</Text>
+              </TouchableOpacity>
+              <Text style={styles.linkSep}>·</Text>
+              <TouchableOpacity onPress={() => openLink(PRIVACY_URL)} hitSlop={8}>
+                <Text style={styles.linkText}>Chính sách bảo mật</Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </View>
@@ -273,4 +291,17 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     paddingHorizontal: 8,
   },
+  linksRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  linkText: {
+    color: '#8A8AA8',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
+  linkSep: { color: '#5A5A78', fontSize: 12 },
 });
