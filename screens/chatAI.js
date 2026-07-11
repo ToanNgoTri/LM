@@ -15,6 +15,8 @@ import {
   Vibration
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
+import Clipboard from '@react-native-clipboard/clipboard';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useSubscription } from '../subscription/SubscriptionContext';
@@ -101,7 +103,7 @@ const TypingIndicator = memo(() => {
   );
 });
 
-const MessageBubble = memo(({ item }) => {
+const MessageBubble = memo(({ item, onCopy }) => {
   const isUser = item.role === 'user';
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(16)).current;
@@ -135,7 +137,10 @@ const MessageBubble = memo(({ item }) => {
           <Ionicons name="sparkles" size={14} color="#fff" />
         </View>
       )}
-      <View
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onLongPress={() => onCopy?.(item.text)}
+        delayLongPress={250}
         style={[
           styles.bubble,
           isUser ? styles.bubbleUser : styles.bubbleAssistant,
@@ -149,15 +154,28 @@ const MessageBubble = memo(({ item }) => {
         >
           {item.text}
         </Text>
-        <Text
-          style={[
-            styles.timestamp,
-            isUser ? styles.timestampUser : styles.timestampAssistant,
-          ]}
-        >
-          {formatTime(item.timestamp)}
-        </Text>
-      </View>
+        <View style={styles.bubbleFooter}>
+          <Text
+            style={[
+              styles.timestamp,
+              isUser ? styles.timestampUser : styles.timestampAssistant,
+            ]}
+          >
+            {formatTime(item.timestamp)}
+          </Text>
+          {!isUser && !!item.text && (
+            <TouchableOpacity
+              onPress={() => onCopy?.(item.text)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.copyBtn}
+              activeOpacity={0.6}
+            >
+              <Ionicons name="copy-outline" size={13} color="#7A7A9C" />
+              <Text style={styles.copyBtnText}>Sao chép</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 });
@@ -417,9 +435,25 @@ try {
     streamAIResponse(text, history);
   }, [inputText, isStreaming, messages, streamAIResponse, scrollToBottom]);
 
+  const handleCopy = useCallback(
+    text => {
+      if (!text) return;
+      Clipboard.setString(text);
+      Vibration.vibrate(12);
+      Toast.show({
+        type: 'copyToast',
+        text1: 'Đã sao chép',
+        visibilityTime: 1500,
+        autoHide: true,
+        topOffset: 50 + insets.top,
+      });
+    },
+    [insets.top],
+  );
+
   const renderMessage = useCallback(
-    ({ item }) => <MessageBubble item={item} />,
-    [],
+    ({ item }) => <MessageBubble item={item} onCopy={handleCopy} />,
+    [handleCopy],
   );
   const keyExtractor = useCallback(item => item.id, []);
 
@@ -683,9 +717,18 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 14.5, lineHeight: 21 },
   bubbleTextUser: { color: '#FFFFFF' },
   bubbleTextAssistant: { color: '#E0E0F4' },
-  timestamp: { fontSize: 10, marginTop: 5 },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    gap: 10,
+  },
+  timestamp: { fontSize: 10 },
   timestampUser: { color: 'rgba(255,255,255,0.5)', textAlign: 'right' },
   timestampAssistant: { color: '#404060' },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  copyBtnText: { fontSize: 11, color: '#7A7A9C', fontWeight: '600' },
 
   typingBubble: {
     backgroundColor: '#1A1A2E',
