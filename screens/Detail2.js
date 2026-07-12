@@ -57,7 +57,7 @@ export function Detail2({}) {
   const [LawFilted, setLawFilted] = useState(false);
   // console.log('LawFilted',LawFilted);
 
-  const [choosenKindLaw, setChoosenKindLaw] = useState([0, 1, 2]);
+  const [choosenKindLaw, setChoosenKindLaw] = useState([0, 1, 2, 3]);
 
   const [dotCount, setDotCount] = useState(1);
 
@@ -275,7 +275,7 @@ export function Detail2({}) {
     if (info5) {
       setSearchResult(convertResult(info5));
       setLawFilted(convertResult(info5));
-      setChoosenKindLaw([0, 1, 2]);
+      setChoosenKindLaw([0, 1, 2, 3]);
     }
   }, [info5]);
 
@@ -290,31 +290,6 @@ export function Detail2({}) {
   useEffect(() => {
     setWanring(false);
   }, [input]);
-
-  function OrderDaySign() {
-    let data = LawFilted;
-    let ArrayResult = [];
-
-    if (Object.keys(LawFilted).length) {
-      Object.keys(data).map((law, i) => {
-        ArrayResult[i] = {
-          [Object.keys(data)[Object.keys(data).length - i - 1]]:
-            data[Object.keys(data)[Object.keys(data).length - i - 1]],
-        };
-      });
-      let newArraySearch = [];
-      ArrayResult.map((key, i) => {
-        newArraySearch[i] = JSON.stringify(key);
-      });
-      newArraySearch = newArraySearch.join(',');
-      newArraySearch = newArraySearch.replace(/\}\}\,\{/gim, '},');
-      newArraySearch = newArraySearch.replace(/^\[\{/, '');
-      newArraySearch = newArraySearch.replace(/\}\}\]$/, '}');
-      // newArraySearch = newArraySearch.replace(/\\/g,'')
-      let newObjectSearch = JSON.parse(newArraySearch);
-      setLawFilted(newObjectSearch);
-    }
-  }
 
   useEffect(() => {
     chooseDisplayKindLaw();
@@ -399,57 +374,44 @@ export function Detail2({}) {
   }, []);
 
   function chooseDisplayKindLaw() {
-    // 1 là luật, 2 là nd, 3 là TT
+    // 0 là luật, 1 là nghị định, 2 là thông tư, 3 là khác
+    // (văn bản khác: không phải Luật/Bộ luật/Nghị định/Thông tư)
 
     let newResult = {};
     // console.log('SearchResult',SearchResult)
 
     if (
-      // choosenKindLaw.length &&
       SearchResult &&
       Object.keys(SearchResult).length &&
       SearchResult['_id'] !== 'none'
     ) {
       Object.keys(SearchResult).map((law, i) => {
-        let kindSample =
-          (choosenKindLaw.includes(0) ? 'Luật|Bộ luật' : '') +
-          (choosenKindLaw.includes(1) ? '|Nghị định' : '') +
-          (choosenKindLaw.includes(2) ? '|Thông tư' : '');
-        kindSample = kindSample.replace(/^\|/, '');
+        const name = SearchResult[law]['lawNameDisplay'];
+        const isOther = !name.match(
+          new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
+        );
 
-        if (choosenKindLaw.length) {
-          if (
-            SearchResult[law]['lawNameDisplay'].match(
-              new RegExp(`^(${kindSample})`, 'img'),
-            )
-          ) {
-            newResult[law] = SearchResult[law];
-          } else {
-            if (
-              !SearchResult[law]['lawNameDisplay'].match(
-                new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
-              )
-            ) {
-              newResult[law] = SearchResult[law];
-            }
-          }
-        } else {
-          if (
-            !SearchResult[law]['lawNameDisplay'].match(
-              new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
-            )
-          ) {
-            newResult[law] = SearchResult[law];
-          }
+        let show = false;
+        if (choosenKindLaw.includes(0) && name.match(/^(Luật|Bộ luật)/im)) {
+          show = true;
+        }
+        if (choosenKindLaw.includes(1) && name.match(/^Nghị định/im)) {
+          show = true;
+        }
+        if (choosenKindLaw.includes(2) && name.match(/^Thông tư/im)) {
+          show = true;
+        }
+        if (choosenKindLaw.includes(3) && isOther) {
+          show = true;
+        }
+
+        if (show) {
+          newResult[law] = SearchResult[law];
         }
       });
       setLawFilted(newResult);
       setChoosenLaw(Object.keys(newResult));
     }
-    // else {
-    //   setLawFilted({});
-    //   setChoosenLaw([]);
-    // }
   }
 
   const NoneOfResutl = () => {
@@ -492,7 +454,7 @@ export function Detail2({}) {
       dispatch({ type: 'searchLawDescription', input: input });
       setValueInput(input);
     }
-    setChoosenKindLaw([0, 1, 2]);
+    setChoosenKindLaw([0, 1, 2, 3]);
   }
 
   const renderItem = useCallback(
@@ -835,7 +797,7 @@ export function Detail2({}) {
             opacity: loading ? 0.5 : 1,
           }}
         >
-          {['Luật/Bộ Luật', 'Nghị định', 'Thông tư'].map((option, i) => {
+          {['Luật/Bộ Luật', 'Nghị định', 'Thông tư', 'Khác'].map((option, i) => {
             return (
               <TouchableOpacity
                 key={`${i}a`}
@@ -872,31 +834,6 @@ export function Detail2({}) {
               </TouchableOpacity>
             );
           })}
-
-          <TouchableOpacity
-            style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 100,
-              height: 25,
-              backgroundColor: 'white',
-              width: 50,
-              padding: 0,
-            }}
-            onPress={async () => {
-              Keyboard.dismiss();
-              OrderDaySign();
-            }}
-          >
-            <Ionicons
-              name="swap-vertical-outline"
-              style={{
-                ...styles.inputBtbText,
-                fontSize: 19,
-                color: 'black',
-              }}
-            ></Ionicons>
-          </TouchableOpacity>
         </View>
 
       </View>

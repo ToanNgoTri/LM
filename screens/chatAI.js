@@ -30,7 +30,7 @@ const INITIAL_MESSAGES = [
   {
     id: '0',
     role: 'assistant',
-    text: 'Xin chào! Tôi là trợ lý tư vấn pháp luật AI. Bạn có thể hỏi tôi bất kỳ điều gì về pháp luật Việt Nam.',
+    text: 'Xin chào! Tôi là trợ lý tra cứu pháp luật AI. Bạn có thể hỏi tôi bất kỳ điều gì về pháp luật Việt Nam.',
     timestamp: new Date(Date.now() - 60000),
   },
 ];
