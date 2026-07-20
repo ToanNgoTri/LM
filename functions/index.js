@@ -1,20 +1,21 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import admin from 'firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore'
 import { MongoClient } from 'mongodb';
 
-import serviceAccount from'./project2-197c0-firebase-adminsdk-wgo9a-ddd9ec03a8.json' with { type: "json" } ;;
 import openrouterAPIKey from './openrouterAPIKey.json' with { type: "json" } ;
 
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: 'https://project2-197c0-default-rtdb.firebaseio.com',
-});
-
+// Mongo metadata (LawCollection, LawSearchContent, LawSearchDescription).
 const client = new MongoClient(
   'mongodb://thuvienphapluat:ZvQn9683p8NnPXFMdR1VX53HTK3Da1WqyXJpvtgMMASTRdDkyu87lFAL7aR5DiiN@46.225.145.42:6980/?directConnection=true',
 );
+
+// Mongo ragdb: collection `chunks` + index $vectorSearch — nguồn RAG cho askLawAI
+// (thay Firestore findNearest). TODO: nên chuyển cred sang Secret Manager.
+const ragClient = new MongoClient(
+  'mongodb://root:sebHiv-sekdup-gymfu1@46.225.145.42:27017/ragdb?authSource=admin&directConnection=true',
+);
+const RAG_DB = 'ragdb';
+const RAG_CHUNKS = 'chunks';
+const RAG_VECTOR_INDEX = 'vector_index';
 
 
 function escapeRegex(s) {
@@ -182,7 +183,6 @@ export const getlastedlaws = onRequest(async (req, res) => {
 export const askLawAI = onRequest(
   { memory: '256MiB' },
   async (req, res) => {
-    const db = getFirestore();
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type');
@@ -230,27 +230,105 @@ export const askLawAI = onRequest(
       const embedData = await embedRes.json();
       const questionVector = embedData.embeddings[0];
 
-      // ── BƯỚC 2: Vector search ─────────────────────────────────────────
-      const snapshot = await db.collection('chunks').findNearest({
-        vectorField: 'embedding',
-        queryVector: questionVector,
-        limit: 5,
-        distanceMeasure: 'COSINE',
-      }).get();
+      // ── BƯỚC 2: Vector search + re-rank theo độ mới ───────────────────
+      // Lấy DƯ ứng viên (40) rồi re-rank = semantic (chính) + recency (phụ)
+      // để vừa "gần đúng nhất", vừa ưu tiên luật/hiệu lực GẦN NHẤT và loại
+      // bản đã bị thay thế / chưa có hiệu lực.
+      const CANDIDATES = 40;    // số chunk lấy về để re-rank
+      const TOP_CONTEXT = 6;    // số chunk cuối cùng đưa vào context
+      const RECENCY_WEIGHT = 0.2; // trọng số độ mới (semantic vẫn áp đảo)
 
-      if (snapshot.empty) {
+      const ragCol = ragClient.db(RAG_DB).collection(RAG_CHUNKS);
+      const docs = await ragCol.aggregate([
+        {
+          $vectorSearch: {
+            index: RAG_VECTOR_INDEX,
+            path: 'embedding',
+            queryVector: questionVector,
+            numCandidates: Math.max(CANDIDATES * 10, 200), // rộng hơn limit để tăng recall
+            limit: CANDIDATES,
+          },
+        },
+        {
+          $project: {
+            _id: 1, article: 1, fullText: 1, lawId: 1,
+            lawDescription: 1, lawDayActive: 1, lawdateSign: 1,
+            score: { $meta: 'vectorSearchScore' }, // cosine similarity, càng cao càng giống
+          },
+        },
+      ]).toArray();
+
+      if (!docs.length) {
         res.write(`data: ${JSON.stringify({ text: 'Không tìm thấy dữ liệu.' })}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
         return;
       }
 
-    const context = snapshot.docs
-      .map(
-        (doc, i) =>
-          `[${doc.data().fullText}\nVăn bản ký ngày ${new Date(doc.data().lawdateSign).toLocaleDateString("vi-VN")} có hiệu lực ngày ${new Date(doc.data().lawDayActive).toLocaleDateString("vi-VN")}]`,
-      )
-      .join("\n\n");
+      // Parse ngày linh hoạt: Firestore Timestamp | ISO string | Date | epoch.
+      const toTime = v => {
+        if (!v) return NaN;
+        if (typeof v === 'object') {
+          if (typeof v.toDate === 'function') return v.toDate().getTime();
+          if (typeof v._seconds === 'number') return v._seconds * 1000;
+          if (typeof v.seconds === 'number') return v.seconds * 1000;
+        }
+        const t = new Date(v).getTime();
+        return Number.isNaN(t) ? NaN : t;
+      };
+      const NOW = Date.now();
+
+      // Gom ứng viên + tính điểm thành phần.
+      let cands = docs.map(d => {
+        const activeT = toTime(d.lawDayActive);
+        const signT = toTime(d.lawdateSign);
+        const recencyT = !Number.isNaN(activeT) ? activeT : signT; // ưu tiên hiệu lực
+        return {
+          data: d,
+          semantic: d.score ?? 0, // vectorSearchScore (cosine) — càng cao càng giống
+          recencyT,
+          activeT,
+          notYetEffective: !Number.isNaN(activeT) && activeT > NOW,
+        };
+      });
+
+      // Loại văn bản CHƯA có hiệu lực (nếu loại xong vẫn còn dữ liệu).
+      const effective = cands.filter(c => !c.notYetEffective);
+      if (effective.length) cands = effective;
+
+      // Chuẩn hoá recency về [0,1] theo min/max trong tập ứng viên.
+      const times = cands.map(c => c.recencyT).filter(t => !Number.isNaN(t));
+      const minT = Math.min(...times);
+      const maxT = Math.max(...times);
+      const span = maxT - minT;
+      for (const c of cands) {
+        const norm = span > 0 && !Number.isNaN(c.recencyT) ? (c.recencyT - minT) / span : 0;
+        c.score = c.semantic + RECENCY_WEIGHT * norm;
+      }
+
+      // Khử trùng theo lawId + article: giữ chunk điểm cao nhất mỗi (luật, điều)
+      // -> tránh nhiều bản/phiên bản của cùng một điều luật lấn át context.
+      const bestByKey = new Map();
+      for (const c of cands) {
+        const key = `${c.data.lawId || ''}|${c.data.article || ''}`;
+        const prev = bestByKey.get(key);
+        if (!prev || c.score > prev.score) bestByKey.set(key, c);
+      }
+
+      // Xếp hạng cuối: điểm tổng giảm dần, lấy TOP_CONTEXT, rồi sắp theo
+      // hiệu lực MỚI NHẤT trước để LLM thấy văn bản gần nhất trên cùng.
+      const picked = [...bestByKey.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, TOP_CONTEXT)
+        .sort((a, b) => (b.activeT || 0) - (a.activeT || 0));
+
+      const fmt = t => (Number.isNaN(t) ? '(không rõ)' : new Date(t).toLocaleDateString('vi-VN'));
+      const context = picked
+        .map(
+          c =>
+            `[${c.data.fullText}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))} có hiệu lực ngày ${fmt(c.activeT)}]`,
+        )
+        .join('\n\n');
 
       // ── BƯỚC 3: Gọi LLM với fallback ─────────────────────────────────
       const systemMsg = {
@@ -258,6 +336,9 @@ export const askLawAI = onRequest(
         content: `Bạn là AI tư vấn pháp luật Việt Nam.
 Nhiệm vụ:
 - Chỉ dùng thông tin trong CONTEXT bên dưới.
+- CONTEXT được sắp xếp theo hiệu lực MỚI NHẤT trước. Khi nhiều văn bản cùng
+  điều chỉnh một vấn đề hoặc mâu thuẫn nhau, ưu tiên văn bản có ngày hiệu lực
+  GẦN NHẤT (mới nhất) và bỏ qua quy định đã bị thay thế.
 - Trả lời NGẮN GỌN, dễ hiểu.
 - Hãy diễn giải lại bằng ngôn ngữ tự nhiên.
 

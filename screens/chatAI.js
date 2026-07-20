@@ -18,6 +18,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useSubscription } from '../subscription/SubscriptionContext';
 import { PaywallModal } from '../subscription/PaywallModal';
@@ -204,8 +205,54 @@ export const AIChatScreen = () => {
   const charTimerRef = useRef(null);     // setTimeout đang chạy
   const assistantIdRef = useRef(null);   // id message AI hiện tại
 
+  // Chỉ rung khi màn hình Chat AI đang được focus (không rung khi user đã
+  // chuyển sang tab/màn khác trong lúc AI vẫn đang stream). Dùng ref để
+  // scheduleNextChar (useCallback deps rỗng) luôn đọc được giá trị mới nhất.
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+  }, [isFocused]);
+
+  // Cho phép auto-scroll xuống đáy khi đang stream. Khi user tự cuộn lên trên
+  // (rời khỏi đáy) -> tắt; khi user cuộn về sát đáy -> bật lại.
+  const autoScrollRef = useRef(true);
+  // true khi cú cuộn HIỆN TẠI là do user (kéo tay/quán tính), false khi là do
+  // code gọi scrollToEnd. Chỉ cho phép cử chỉ của user TẮT auto-scroll — cuộn
+  // do code (lúc push/stream) không bao giờ tự tắt -> tránh race khi câu trả
+  // lời về nhanh làm animation dừng chưa tới đáy.
+  const userScrollingRef = useRef(false);
+
   const scrollToBottom = useCallback((animated = true) => {
+    autoScrollRef.current = true;
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 80);
+  }, []);
+
+  // Vị trí cuộn quyết định auto-scroll:
+  //  - về sát đáy (<=80px)      -> luôn bật lại (kể cả sau khi push)
+  //  - rời đáy DO user tự cuộn  -> tắt
+  //  - rời đáy do code cuộn     -> giữ nguyên (không tắt)
+  const handleScroll = useCallback(e => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    if (distanceFromBottom <= 80) {
+      autoScrollRef.current = true;
+    } else if (userScrollingRef.current) {
+      autoScrollRef.current = false;
+    }
+  }, []);
+
+  // Đánh dấu cú cuộn đang do user điều khiển (kéo tay + quán tính sau khi thả).
+  const handleScrollBeginDrag = useCallback(() => {
+    userScrollingRef.current = true;
+    Keyboard.dismiss();
+  }, []);
+  const handleUserScrollActive = useCallback(() => {
+    userScrollingRef.current = true;
+  }, []);
+  const handleUserScrollIdle = useCallback(() => {
+    userScrollingRef.current = false;
   }, []);
 
   // Ref ổn định: giữ flatListRef nội bộ + expose global.AIChatRef để nhấn lần 2
@@ -230,7 +277,8 @@ const scheduleNextChar = useCallback(() => {
   const char = charQueueRef.current.shift();
   const id = assistantIdRef.current;
 
-  Vibration.vibrate(6);
+  // Chỉ rung khi đang ở màn hình Chat AI.
+  if (isFocusedRef.current) Vibration.vibrate(6);
 
   setMessages(prev =>
     prev.map(msg =>
@@ -238,9 +286,10 @@ const scheduleNextChar = useCallback(() => {
     ),
   );
 
-  // Auto-scroll mỗi 5 ký tự để không gọi quá nhiều
+  // Auto-scroll mỗi 5 ký tự để không gọi quá nhiều — nhưng tôn trọng cử chỉ
+  // của user: nếu user đã cuộn lên trên thì không kéo xuống đáy nữa.
   charCountRef.current = (charCountRef.current || 0) + 1;
-  if (charCountRef.current % 5 === 0) {
+  if (autoScrollRef.current && charCountRef.current % 5 === 0) {
     flatListRef.current?.scrollToEnd({ animated: false });
   }
 
@@ -565,7 +614,12 @@ try {
         contentContainerStyle={styles.listContent}
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={Keyboard.dismiss}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleUserScrollIdle}
+        onMomentumScrollBegin={handleUserScrollActive}
+        onMomentumScrollEnd={handleUserScrollIdle}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       />
