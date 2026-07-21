@@ -100,6 +100,8 @@ const ToastCustom = ({ text1, text2 }) => {
 // thay việc gọi Store qua react-native-version-check để quyết định update.
 const APP_CONFIG_URL =
   'https://us-central1-project2-197c0.cloudfunctions.net/appConfig';
+const REPORT_VERSION_URL =
+  'https://us-central1-project2-197c0.cloudfunctions.net/reportLatestVersion';
 
 // So sánh versionName ("1.2.3" hoặc "13"). Trả <0 nếu a cũ hơn b.
 function compareVersion(a, b) {
@@ -190,32 +192,39 @@ function App() {
     try {
       // Phiên bản hiện tại đọc từ chính app.
       const currentVersion = VersionCheck.getCurrentVersion();
+      const platform = Platform.OS === 'ios' ? 'ios' : 'android';
 
-      // Version MỚI NHẤT lấy từ Store qua version-check (cả iOS lẫn Android).
-      //   iOS: API iTunes (tin cậy). Android: cào Play Store (có thể trả rỗng).
-      let latestVersion = '';
+      // Version mới nhất đọc từ Store theo nền tảng (iOS: iTunes; Android: Play).
+      let storeVersion = '';
       try {
-        latestVersion = await VersionCheck.getLatestVersion();
+        storeVersion = String((await VersionCheck.getLatestVersion()) || '');
       } catch (e) {
         console.log('getLatestVersion error', e);
       }
 
-      // Cờ nhắc/chặn (force/should) lấy từ backend — do BẠN quyết định.
-      // cfg.latestVersion (nếu có) chỉ dùng LÀM DỰ PHÒNG khi version-check trả rỗng
-      // (thường là Android) — để không mất khả năng chặn khi Store cào hụt.
+      // Đồng bộ số này lên config Mongo (fire-and-forget, lỗi bỏ qua).
+      // Backend chỉ ghi khi version cao hơn giá trị đang lưu.
+      if (storeVersion) {
+        fetch(REPORT_VERSION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ platform, version: storeVersion }),
+        }).catch(() => {});
+      }
+
+      // Cấu hình từ backend: cờ force/should (BẠN quyết định) + mốc version đã lưu.
       const res = await fetch(APP_CONFIG_URL, {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
       const cfg = await res.json();
 
-      if (!latestVersion) {
-        latestVersion =
-          (Platform.OS === 'ios'
-            ? cfg?.latestVersioniOS
-            : cfg?.latestVersionAndroid) || '';
-      }
-      latestVersion = String(latestVersion);
+      const configVersion = String(
+        (platform === 'ios' ? cfg?.latestVersioniOS : cfg?.latestVersionAndroid) || '',
+      );
+
+      // So sánh dùng số Store vừa đọc; nếu Store trả rỗng thì dùng mốc trong config.
+      const latestVersion = storeVersion || configVersion;
       latestVersionRef.current = latestVersion;
 
       // Không biết được bản mới nhất -> KHÔNG chặn (tránh khóa nhầm người dùng).
