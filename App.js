@@ -16,7 +16,8 @@ import {
   Animated,
   ScrollView,
   Linking,
-  Platform
+  Platform,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-gesture-handler';
@@ -95,8 +96,28 @@ const ToastCustom = ({ text1, text2 }) => {
   );
 };
 
+// Endpoint cấu hình cập nhật (Mongo LawMachine.AppConfig, _id='update') —
+// thay việc gọi Store qua react-native-version-check để quyết định update.
+const APP_CONFIG_URL =
+  'https://us-central1-project2-197c0.cloudfunctions.net/appConfig';
+
+// So sánh versionName ("1.2.3" hoặc "13"). Trả <0 nếu a cũ hơn b.
+function compareVersion(a, b) {
+  const pa = String(a ?? '0').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b ?? '0').split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
 function App() {
   const [updateStatus, SetUpdateStatus] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(false);
+  // latestVersion lấy từ appConfig, dùng lại trong nút Thoát/Chấp nhận (không gọi Store).
+  const latestVersionRef = useRef('0');
   const [showPolicy, setShowPolicy] = useState(false);
   const [heightNotification, setHeightNotification] = useState(0);
 
@@ -115,8 +136,16 @@ function App() {
     }
   }
 
+  function openStore() {
+    const url =
+      Platform.OS == 'ios'
+        ? 'https://apps.apple.com/vn/app/th%C6%B0-vi%E1%BB%87n-lu%E1%BA%ADt/id6741737005?l=vi'
+        : 'https://play.google.com/store/apps/details?id=com.lawmachine&pcampaignid=web_share';
+    Linking.openURL(url).catch(err => console.error('Error opening URL: ', err));
+  }
+
   async function exitUpdate() {
-    const latestVersion = await VersionCheck.getLatestVersion();
+    const latestVersion = latestVersionRef.current;
 
     if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
       const fileAppear = await FileSystem.readFile(
@@ -137,7 +166,7 @@ function App() {
   }
 
   async function acceptUpdate() {
-    const latestVersion = await VersionCheck.getLatestVersion();
+    const latestVersion = latestVersionRef.current;
 
     if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
       const fileAppear = await FileSystem.readFile(
@@ -158,31 +187,67 @@ function App() {
   }
 
   const checkForUpdate = async () => {
-    // Lấy phiên bản hiện tại của ứng dụng
-    const currentVersion = VersionCheck.getCurrentVersion();
+    try {
+      // Phiên bản hiện tại đọc từ chính app.
+      const currentVersion = VersionCheck.getCurrentVersion();
 
-    // Kiểm tra phiên bản mới nhất trên Google Play Store
-    const latestVersion = await VersionCheck.getLatestVersion({
-      packageName: 'com.lawmachine',
-    });
-
-    if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
-      const fileAppear = await FileSystem.readFile(
-        Dirs.CacheDir + '/Appear.txt',
-        'utf8',
-      );
-
-      let contentAppear = JSON.parse(fileAppear);
-      console.log('Number(latestVersion)', Number(latestVersion));
-      console.log('Number(currentVersion)', Number(currentVersion));
-
-      if (Number(latestVersion) > Number(currentVersion)) {
-        if (!contentAppear[latestVersion]) {
-          SetUpdateStatus(true);
-        }
+      // Version MỚI NHẤT lấy từ Store qua version-check (cả iOS lẫn Android).
+      //   iOS: API iTunes (tin cậy). Android: cào Play Store (có thể trả rỗng).
+      let latestVersion = '';
+      try {
+        latestVersion = await VersionCheck.getLatestVersion();
+      } catch (e) {
+        console.log('getLatestVersion error', e);
       }
 
-      // SetUpdateStatus(true);
+      // Cờ nhắc/chặn (force/should) lấy từ backend — do BẠN quyết định.
+      // cfg.latestVersion (nếu có) chỉ dùng LÀM DỰ PHÒNG khi version-check trả rỗng
+      // (thường là Android) — để không mất khả năng chặn khi Store cào hụt.
+      const res = await fetch(APP_CONFIG_URL, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+      const cfg = await res.json();
+
+      if (!latestVersion) {
+        latestVersion =
+          (Platform.OS === 'ios'
+            ? cfg?.latestVersioniOS
+            : cfg?.latestVersionAndroid) || '';
+      }
+      latestVersion = String(latestVersion);
+      latestVersionRef.current = latestVersion;
+
+      // Không biết được bản mới nhất -> KHÔNG chặn (tránh khóa nhầm người dùng).
+      if (!latestVersion) return;
+
+      // Chỉ nhắc/chặn khi app đang CŨ hơn bản mới nhất.
+      const outdated = compareVersion(currentVersion, latestVersion) < 0;
+      if (!outdated) return;
+
+      // forceUpdate: chặn cứng — không cho thoát, không phụ thuộc Appear.txt.
+      if (cfg?.forceUpdate === true) {
+        setForceUpdate(true);
+        SetUpdateStatus(true);
+        return;
+      }
+
+      // shouldUpdate: nhắc mềm — vẫn tôn trọng lựa chọn "đã tắt" theo từng phiên bản.
+      if (cfg?.shouldUpdate === true) {
+        let dismissed = false;
+        if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
+          const fileAppear = await FileSystem.readFile(
+            Dirs.CacheDir + '/Appear.txt',
+            'utf8',
+          );
+          const contentAppear = JSON.parse(fileAppear);
+          dismissed = !!contentAppear[latestVersion];
+        }
+        if (!dismissed) SetUpdateStatus(true);
+      }
+    } catch (e) {
+      // Lỗi mạng/parse không được chặn app.
+      console.log('checkForUpdate error', e);
     }
   };
 
@@ -191,6 +256,13 @@ function App() {
 
     checkForUpdate();
   }, []);
+
+  // Khi force update: chặn nút back cứng (Android) để không thoát được app.
+  useEffect(() => {
+    if (!forceUpdate) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [forceUpdate]);
 
   const [homeRef, setHomeRef] = useState('');
   const updateHomeRef = data => {
@@ -481,6 +553,25 @@ function App() {
                           Chấp nhận chính sách và tiếp tục
                         </Text>
                       </TouchableOpacity>
+                    ) : forceUpdate ? (
+                      /* ===== FORCE: chỉ có nút Cập nhật, KHÔNG cho thoát ===== */
+                      <TouchableOpacity
+                        style={{ backgroundColor: 'green', width: '100%' }}
+                        onPress={() => openStore()}
+                      >
+                        <Text
+                          style={{
+                            paddingBottom: 10,
+                            paddingTop: 10,
+                            textAlign: 'center',
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: 16,
+                          }}
+                        >
+                          Cập nhật ngay để tiếp tục
+                        </Text>
+                      </TouchableOpacity>
                     ) : (
                       <View style={{ flexDirection: 'row', width: '100%' }}>
                         <TouchableOpacity
@@ -503,19 +594,7 @@ function App() {
                               useNativeDriver: false,
                             }).start();
 
-                            if (Platform.OS == 'ios') {
-                              Linking.openURL(
-                                'https://apps.apple.com/vn/app/th%C6%B0-vi%E1%BB%87n-lu%E1%BA%ADt/id6741737005?l=vi',
-                              ).catch(err =>
-                                console.error('Error opening URL: ', err),
-                              );
-                            } else {
-                              Linking.openURL(
-                                'https://play.google.com/store/apps/details?id=com.lawmachine&pcampaignid=web_share',
-                              ).catch(err =>
-                                console.error('Error opening URL: ', err),
-                              );
-                            }
+                            openStore();
                           }}
                         >
                           <Text

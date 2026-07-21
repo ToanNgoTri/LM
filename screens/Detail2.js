@@ -1,4 +1,4 @@
-import {
+﻿import {
   Text,
   StyleSheet,
   View,
@@ -25,6 +25,60 @@ import { Dirs, FileSystem } from 'react-native-file-access';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
 import { setFilterUI } from '../redux/fetchData';
+
+// ── Gợi ý (suggest) theo lawDescription, dữ liệu cache ở client ───────────
+const CF_BASE = 'https://us-central1-project2-197c0.cloudfunctions.net';
+const SUGGEST_FILE = Dirs.CacheDir + '/suggestIndex.json'; // { count, items:[{i,d}] }
+const SUGGEST_LIMIT = 8; // số dòng gợi ý tối đa
+const SUGGEST_MIN_CHARS = 2; // gõ tối thiểu 2 ký tự mới gợi ý
+const DESC_BATCH = 400; // số _id mỗi lần gọi getSuggestDescs (tránh $in quá lớn)
+
+// Chuẩn hoá để so khớp GIỐNG thói quen gõ của người dùng:
+//  - bỏ dấu, hạ chữ thường (không phân biệt dấu/hoa-thường);
+//  - đổi MỌI ký tự không phải chữ/số thành space (dấu / - . , : ...) -> gõ
+//    "80 2024 tt btc" khớp "80/2024/TT-BTC".
+// Ánh xạ TỪNG ký tự 1->1 (không gộp space) để findMatchRange highlight đúng.
+const normVi = s =>
+  (s || '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ');
+
+// Chuẩn hoá từ khoá NGƯỜI DÙNG gõ: như normVi + gộp khoảng trắng thừa & trim,
+// nên "80  2024", "80/2024", "80 2024" đều thành "80 2024".
+const normQuery = s => normVi(s).replace(/\s+/g, ' ').trim();
+
+// Tìm vị trí [start, end) TRONG text gốc khớp với qNorm (đã bỏ dấu).
+// Chuẩn hoá từng ký tự và ghi map norm-index -> original-index nên vẫn đúng
+// kể cả khi 1 ký tự gốc nở ra / co lại sau normalize.
+function findMatchRange(original, qNorm) {
+  if (!original || !qNorm) return null;
+  let norm = '';
+  const map = []; // map[k] = chỉ số trong `original` của ký tự norm thứ k
+  for (let i = 0; i < original.length; i++) {
+    const nc = normVi(original[i]);
+    for (let j = 0; j < nc.length; j++) {
+      norm += nc[j];
+      map.push(i);
+    }
+  }
+  const pos = norm.indexOf(qNorm);
+  if (pos < 0) return null;
+  const start = map[pos];
+  const end = map[pos + qNorm.length - 1] + 1;
+  return [start, end];
+}
+
+async function cfPost(path, body) {
+  const res = await fetch(`${CF_BASE}/${path}`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  return res.json();
+}
 
 export function Detail2({}) {
   const { loading5, info5 } = useSelector(
@@ -72,6 +126,18 @@ export function Detail2({}) {
   // const textInputForFilter = useRef(null);
 
   const FlatListToScroll = useRef(null);
+
+  // ── Suggest theo lawDescription (dữ liệu cache client) ──────────────────
+  // suggestIndexRef: [{ i, d, norm }] đã chuẩn hoá 1 lần, để lọc mỗi phím.
+  const suggestIndexRef = useRef([]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const suggestTimer = useRef(null);
+  // Dropdown render ở GỐC màn hình (full-screen) để nhận được touch trên Android
+  // (con tràn ngoài bounds cha thì Android không giao touch). inputRowRef +
+  // anchor: đo vị trí thật của ô input để đặt dropdown ngay dưới nó.
+  const inputRowRef = useRef(null);
+  const [anchor, setAnchor] = useState(null); // { x, y, w, h } theo toạ độ màn hình
 
   const dispatch = useDispatch();
 
@@ -438,8 +504,122 @@ export function Detail2({}) {
     );
   };
 
+  // Nạp mảng { i, d, norm } vào bộ nhớ để lọc gợi ý.
+  function buildIndex(items) {
+    suggestIndexRef.current = (items || []).map(it => ({
+      i: it.i,
+      d: it.d,
+      norm: normVi(it.d),
+    }));
+  }
+
+  async function writeCache(cache) {
+    try {
+      await FileSystem.writeFile(SUGGEST_FILE, JSON.stringify(cache), 'utf8');
+    } catch (e) {}
+  }
+
+  // Tải FULL (lần đầu / mất cache).
+  async function fetchFull() {
+    const r = await cfPost('getSuggestData', {});
+    const cache = { count: r.count || 0, items: r.data || [] };
+    await writeCache(cache);
+    return cache;
+  }
+
+  // Đồng bộ delta: tải danh sách _id (nhẹ) -> tìm phần thiếu -> chỉ tải mô tả
+  // của phần thiếu. Bỏ các _id đã bị xoá. Rẻ vì chỉ chạy khi count đổi.
+  async function syncDelta(cache) {
+    const r = await cfPost('getSuggestIds', {});
+    const ids = r.ids || [];
+    if (!ids.length) return cache; // lỗi mạng -> giữ cache cũ
+    const idSet = new Set(ids);
+    const have = new Map(cache.items.map(x => [x.i, x]));
+    // Giữ lại phần chưa bị xoá.
+    const items = cache.items.filter(x => idSet.has(x.i));
+    const missing = ids.filter(id => !have.has(id));
+    for (let k = 0; k < missing.length; k += DESC_BATCH) {
+      const batch = missing.slice(k, k + DESC_BATCH);
+      const descs = await cfPost('getSuggestDescs', { ids: batch });
+      if (Array.isArray(descs)) items.push(...descs);
+    }
+    const next = { count: r.count || ids.length, items };
+    await writeCache(next);
+    return next;
+  }
+
+  // Mount: đọc cache -> nếu chưa có tải full; nếu có, gate bằng countAllLaw,
+  // count đổi mới đồng bộ delta. Toàn bộ chạy nền, lỗi thì bỏ qua (suggest phụ).
+  async function loadSuggestIndex() {
+    try {
+      let cache = null;
+      if (await FileSystem.exists(SUGGEST_FILE)) {
+        try {
+          cache = JSON.parse(await FileSystem.readFile(SUGGEST_FILE, 'utf8'));
+        } catch (e) {
+          cache = null;
+        }
+      }
+      if (!cache || !Array.isArray(cache.items) || !cache.items.length) {
+        cache = await fetchFull();
+      } else {
+        buildIndex(cache.items); // dùng được ngay, đồng bộ chạy nền tiếp
+        const serverCount = await cfPost('countAllLaw', {});
+        if (typeof serverCount === 'number' && serverCount !== cache.count) {
+          cache = await syncDelta(cache);
+        }
+      }
+      buildIndex(cache.items);
+    } catch (e) {}
+  }
+
+  useEffect(() => {
+    loadSuggestIndex();
+  }, []);
+
+
+  // Lọc gợi ý (chạy sau debounce). Không phân biệt dấu/hoa-thường/phân cách.
+  function runSuggest(text) {
+    const q = normQuery(text);
+    if (q.length < SUGGEST_MIN_CHARS) {
+      setSuggestions([]);
+      setShowSuggest(false);
+      return;
+    }
+    const idx = suggestIndexRef.current;
+    const out = [];
+    for (let k = 0; k < idx.length && out.length < SUGGEST_LIMIT; k++) {
+      if (idx[k].norm.indexOf(q) !== -1) out.push(idx[k]);
+    }
+    setSuggestions(out);
+    if (out.length) {
+      // Đo vị trí ô input (toạ độ màn hình) để đặt dropdown ngay bên dưới.
+      if (inputRowRef.current && inputRowRef.current.measureInWindow) {
+        inputRowRef.current.measureInWindow((x, y, w, h) => {
+          if (w) setAnchor({ x, y, w, h });
+        });
+      }
+      setShowSuggest(true);
+    } else {
+      setShowSuggest(false);
+    }
+  }
+
+  function onChangeSearchText(text) {
+    setInput(text);
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    suggestTimer.current = setTimeout(() => runSuggest(text), 200);
+  }
+
+  function hideSuggest() {
+    setShowSuggest(false);
+    setSuggestions([]);
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+  }
+
   function pressToSearch() {
     Keyboard.dismiss();
+    hideSuggest();
     if (paper > 2) {
       setPaper(0);
     } else {
@@ -620,6 +800,7 @@ export function Detail2({}) {
           paddingTop: insets.top + 5,
           borderBottomWidth: 1,
           borderBottomColor: 'black',
+          zIndex: 20,
         }}
       >
                          <ScreenToggle active="searchlaw" />
@@ -690,6 +871,7 @@ export function Detail2({}) {
             }}
           >
             <View
+              ref={inputRowRef}
               style={{
                 position: 'relative',
                 flexDirection: 'row',
@@ -703,9 +885,7 @@ export function Detail2({}) {
               <TextInput
                 ref={textInput}
                 style={{ ...styles.inputArea }}
-                onChangeText={text => {
-                  setInput(text);
-                }}
+                onChangeText={onChangeSearchText}
                 value={input}
                 selectTextOnFocus={true}
                 placeholder="Nhập từ khóa..."
@@ -713,12 +893,16 @@ export function Detail2({}) {
                 onSubmitEditing={() => {
                   pressToSearch();
                 }}
-                // onFocus={() => setTextInputFocus(true)}
-                // onBlur={() => setTextInputFocus(false)}
+                onFocus={() => {
+                  if (input && input.trim().length >= SUGGEST_MIN_CHARS) {
+                    runSuggest(input);
+                  }
+                }}
               ></TextInput>
               <TouchableOpacity
                 onPress={() => {
                   setInput('');
+                  hideSuggest();
                   textInput.current.focus();
                 }}
                 style={{
@@ -921,7 +1105,10 @@ export function Detail2({}) {
           <NoneOfResutl style={{ backgroundColor: 'red' }} />
         ) : Object.keys(SearchResult).length || info3.length || info5 ? (
           <FlatList
-            onScrollBeginDrag={() => Keyboard.dismiss()}
+            onScrollBeginDrag={() => {
+              Keyboard.dismiss();
+              hideSuggest();
+            }}
             ref={ref => {
               global.SearchLawRef = ref;
               FlatListToScroll.current = ref;
@@ -1254,6 +1441,95 @@ export function Detail2({}) {
               </Text>
             </TouchableOpacity>
           </Animated.View>
+        </>
+      )}
+      {/* ── Dropdown gợi ý: render ở GỐC (full-screen) để Android giao touch;
+             định vị ngay dưới ô input theo toạ độ đo được (anchor). ── */}
+      {showSuggest && suggestions.length > 0 && anchor && (
+        <>
+          {/* Backdrop phủ vùng kết quả phía sau -> tap vào đó ẩn CẢ dropdown
+              lẫn bàn phím */}
+          <TouchableWithoutFeedback
+            onPress={() => {
+              hideSuggest();
+              Keyboard.dismiss();
+            }}
+          >
+            <View
+              style={{
+                position: 'absolute',
+                top: anchor.y + anchor.h,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9998,
+              }}
+            />
+          </TouchableWithoutFeedback>
+          <View
+            style={{
+              position: 'absolute',
+              top: anchor.y + anchor.h + 2,
+              left: anchor.x - 24,
+              width: anchor.w + 48,
+              maxHeight: 360,
+              backgroundColor: 'white',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#e0e0e0',
+              zIndex: 9999,
+              elevation: 20,
+              shadowColor: '#000',
+              shadowOpacity: 0.2,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 3 },
+              overflow: 'hidden',
+            }}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              {suggestions.map((s, k) => {
+                const range = findMatchRange(s.d, normQuery(input));
+                return (
+                  <TouchableOpacity
+                    key={s.i}
+                    onPress={() => {
+                      hideSuggest();
+                      Keyboard.dismiss();
+                      navigation.push('accessLaw', { screen: s.i });
+                    }}
+                    style={{
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      borderBottomWidth: k < suggestions.length - 1 ? 1 : 0,
+                      borderBottomColor: '#f0f0f0',
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, color: '#333' }}>
+                      {range ? (
+                        <>
+                          {s.d.slice(0, range[0])}
+                          <Text
+                            style={{
+                              backgroundColor: '#ffe08a',
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {s.d.slice(range[0], range[1])}
+                          </Text>
+                          {s.d.slice(range[1])}
+                        </>
+                      ) : (
+                        s.d
+                      )}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
         </>
       )}
     </>

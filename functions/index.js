@@ -180,6 +180,63 @@ export const getlastedlaws = onRequest(async (req, res) => {
 
 
 
+// ── Dữ liệu gợi ý (suggest) cho tab "Tìm văn bản" ────────────────────────
+// Client tải & cache toàn bộ { _id, lawDescription } để gợi ý ngay khi gõ
+// (không gọi server mỗi phím). Đồng bộ RẺ theo 3 mức:
+//   1) countAllLaw (đã có) -> gate: chỉ vài byte, gọi mỗi lần mở app.
+//   2) getSuggestIds -> khi count đổi, tải danh sách _id (nhẹ) để tìm phần thiếu.
+//   3) getSuggestDescs -> chỉ tải lawDescription của các _id còn thiếu.
+// getSuggestData: tải FULL 1 lần lúc cài / khi mất cache.
+// Dùng key ngắn i=_id, d=lawDescription để nhẹ payload.
+
+export const getSuggestData = onRequest(async (req, res) => {
+  try {
+    const col = client.db('LawMachine').collection('LawSearchDescription');
+    const rows = await col
+      .find({}, { projection: { 'info.lawDescription': 1 } })
+      .toArray();
+    const data = rows.map(r => ({ i: r._id, d: r.info?.lawDescription || '' }));
+    res.json({ count: data.length, data });
+  } catch (e) {
+    console.error('getSuggestData error:', e);
+    res.status(500).json({ count: 0, data: [] });
+  }
+});
+
+export const getSuggestIds = onRequest(async (req, res) => {
+  try {
+    const col = client.db('LawMachine').collection('LawSearchDescription');
+    const rows = await col.find({}, { projection: { _id: 1 } }).toArray();
+    res.json({ count: rows.length, ids: rows.map(r => r._id) });
+  } catch (e) {
+    console.error('getSuggestIds error:', e);
+    res.status(500).json({ count: 0, ids: [] });
+  }
+});
+
+export const getSuggestDescs = onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json([]);
+    return;
+  }
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    if (!ids.length) {
+      res.json([]);
+      return;
+    }
+    const col = client.db('LawMachine').collection('LawSearchDescription');
+    const rows = await col
+      .find({ _id: { $in: ids } }, { projection: { 'info.lawDescription': 1 } })
+      .toArray();
+    res.json(rows.map(r => ({ i: r._id, d: r.info?.lawDescription || '' })));
+  } catch (e) {
+    console.error('getSuggestDescs error:', e);
+    res.status(500).json([]);
+  }
+});
+
+
 export const askLawAI = onRequest(
   { memory: '256MiB' },
   async (req, res) => {
@@ -453,3 +510,42 @@ if (r.status === 429 || r.status === 400) {  // ← thêm 400
     }
   }
 );
+
+// ─── appConfig ───────────────────────────────────────────────────────────────
+// Nguồn cấu hình cập nhật cho app (thay việc gọi Store qua react-native-version-check).
+// Version mới nhất do app tự đọc từ Store (VersionCheck.getLatestVersion).
+// Function này CHỈ trả về CỜ do bạn điều khiển; latestVersion* chỉ là số DỰ PHÒNG
+// dùng khi version-check trả rỗng (thường là Android cào hụt Play Store).
+// Đọc 1 doc trong Mongo LawMachine.AppConfig, _id = 'update':
+//   {
+//     _id: 'update',
+//     forceUpdate: false,           // true -> app cũ hơn bị CHẶN, không thoát được
+//     shouldUpdate: true,           // true -> nhắc mềm (app cũ hơn vẫn dùng/tắt được)
+//     latestVersionAndroid: '2.94', // DỰ PHÒNG cho Android (nên = bản Android đang live)
+//     latestVersioniOS: '2.960',    // DỰ PHÒNG cho iOS (hiếm khi cần vì iTunes tin cậy)
+//     message: ''                   // (tuỳ chọn) lời nhắn hiển thị
+//   }
+// Thiếu doc -> trả mặc định "không làm gì" để không chặn nhầm người dùng.
+export const appConfig = onRequest(async (req, res) => {
+  try {
+    const col = client.db('LawMachine').collection('AppConfig');
+    const doc = await col.findOne({ _id: 'update' });
+    res.json({
+      forceUpdate: doc?.forceUpdate === true,
+      shouldUpdate: doc?.shouldUpdate === true,
+      latestVersionAndroid: doc?.latestVersionAndroid ?? '',
+      latestVersioniOS: doc?.latestVersioniOS ?? '',
+      message: doc?.message ?? '',
+    });
+  } catch (e) {
+    console.error('appConfig error:', e);
+    // Lỗi backend không được phép chặn app -> trả mặc định an toàn.
+    res.json({
+      forceUpdate: false,
+      shouldUpdate: false,
+      latestVersionAndroid: '',
+      latestVersioniOS: '',
+      message: '',
+    });
+  }
+});
