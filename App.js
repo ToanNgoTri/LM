@@ -25,6 +25,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import VersionCheck from 'react-native-version-check';
 import { SubscriptionProvider } from './subscription/SubscriptionContext';
+import { syncSuggestCache } from './screens/suggestCache';
 const BoxInHomeScreen = createContext();
 // const InfoDownloaded = createContext(); //
 const RefOfHome = createContext(); //
@@ -264,6 +265,10 @@ function App() {
     getPolicyAppear().then(status => setShowPolicy(status));
 
     checkForUpdate();
+
+    // Đồng bộ cache gợi ý ngay khi mở app (chạy nền, không chặn UI).
+    // Nhờ vậy lawRelated ở Detail5 luôn có tên mới nhất để tra.
+    syncSuggestCache();
   }, []);
 
   // Khi force update: chặn nút back cứng (Android) để không thoát được app.

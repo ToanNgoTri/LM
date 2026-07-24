@@ -29,6 +29,7 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { loadSuggestMap } from './suggestCache';
 let TopUnitCount; // là đơn vị lớn nhất vd là 'phần thứ' hoặc chươn
 
 let sumChapterArray = []; // array mà mỗi phần tử là 'phần thứ...' có tổng bn chương
@@ -424,6 +425,11 @@ export function Detail5() {
 
   const [Content, setContent] = useState([]);
   const [Info, setInfo] = useState({});
+  const [suggestMap, setSuggestMap] = useState({}); // { _id: tên } để rà lawRelated
+
+  useEffect(() => {
+    loadSuggestMap().then(setSuggestMap);
+  }, []);
 
   const { width, height } = Dimensions.get('window');
 
@@ -2256,9 +2262,21 @@ export function Detail5() {
                         }}
                       >
                         {Info &&
-                          Object.keys(Info['lawRelated']).map((key, i) => {
-                            if (Info['lawRelated'][key]) {
-                              let nameLaw = Info['lawRelated'][key];
+                          // Version mới: lawRelated là MẢNG lawId ["100/2015/QH13", ...].
+                          // Version cũ: lawRelated là object { lawId: tên }. Xử lý cả hai
+                          // để tránh xung đột với dữ liệu đã lưu / server cũ.
+                          (Array.isArray(Info['lawRelated'])
+                            ? Info['lawRelated']
+                            : Object.keys(Info['lawRelated'])
+                          ).map((key, i) => {
+                            // "live search exist": tra tên từ suggestMap (local). Với
+                            // version mới chỉ hiện khi tồn tại trong suggestMap; version
+                            // cũ vẫn fallback về tên đã lưu trong object lawRelated.
+                            const savedName = Array.isArray(Info['lawRelated'])
+                              ? undefined
+                              : Info['lawRelated'][key];
+                            let nameLaw = suggestMap[key] || savedName;
+                            if (nameLaw) {
                               return (
                                 <TouchableOpacity
                                   // style={{backgroundColor:'red'}}
