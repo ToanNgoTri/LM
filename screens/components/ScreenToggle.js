@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
-const BTN_WIDTH = 90;
+const BTN_WIDTH = 100;
 
 export function ScreenToggle({ active }) {
   const navigation = useNavigation();
@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: 'rgba(255,255,255,0.75)',
+    textAlign: 'center',
   },
 
   labelActive: {
