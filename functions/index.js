@@ -263,9 +263,10 @@ export const askLawAI = onRequest(
     const FREE_MODELS = [
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
-      'qwen/qwen3-coder:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'meta-llama/llama-3.2-3b-instruct:free',
+      'poolside/laguna-xs-2.1:free',
+      'openai/gpt-oss-20b:free',
+      'cohere/north-mini-code:free',
+      'inclusionai/ling-3.0-flash:free',
     ];
 
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
