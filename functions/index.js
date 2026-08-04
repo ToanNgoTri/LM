@@ -258,21 +258,24 @@ export const askLawAI = onRequest(
     res.flushHeaders();
 
     // Model miễn phí (mặc định) cho người dùng bản Free.
+    // Lưu ý: slug ':free' có thể bị OpenRouter khai tử bất cứ lúc nào (trả 404
+    // kèm gợi ý dùng bản trả phí) -> đã bỏ 'qwen/qwen3-next-80b-a3b-instruct:free'.
     const FREE_MODELS = [
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
-      'qwen/qwen3-next-80b-a3b-instruct:free',
       'qwen/qwen3-coder:free',
       'meta-llama/llama-3.3-70b-instruct:free',
       'meta-llama/llama-3.2-3b-instruct:free',
     ];
 
-    // Model trả phí (chất lượng cao hơn) cho người dùng Premium.
-    // Vẫn giữ fallback sang model free ở cuối để không bao giờ trả lỗi trắng.
-    const PREMIUM_MODELS = [
-      ...FREE_MODELS,
-      'qwen/qwen-2.5-7b-instruct'
+    // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
+    // sau đó mới fallback sang model free để không bao giờ trả lỗi trắng.
+    const PAID_MODELS = [
+      'qwen/qwen3-next-80b-a3b-instruct',
+      'qwen/qwen-2.5-7b-instruct',
     ];
+
+    const PREMIUM_MODELS = [...PAID_MODELS, ...FREE_MODELS];
 
     const MODELS = isPremium ? PREMIUM_MODELS : FREE_MODELS;
     console.log(`Plan: ${plan} → dùng ${MODELS.length} model`);
@@ -287,13 +290,16 @@ export const askLawAI = onRequest(
       const embedData = await embedRes.json();
       const questionVector = embedData.embeddings[0];
 
-      // ── BƯỚC 2: Vector search + re-rank theo độ mới ───────────────────
-      // Lấy DƯ ứng viên (40) rồi re-rank = semantic (chính) + recency (phụ)
-      // để vừa "gần đúng nhất", vừa ưu tiên luật/hiệu lực GẦN NHẤT và loại
-      // bản đã bị thay thế / chưa có hiệu lực.
+      // ── BƯỚC 2: Vector search + re-rank ───────────────────────────────
+      // Lấy DƯ ứng viên (40) rồi re-rank theo THỨ TỰ ƯU TIÊN CỨNG:
+      //   1) Đúng nội dung (semantic similarity) — quyết định trước.
+      //   2) Chỉ khi mức đúng xem như tương đương (chênh <= SEMANTIC_TIE)
+      //      mới xét tới ngày hiệu lực để lấy văn bản MỚI NHẤT.
+      // Nhờ vậy recency không bao giờ đẩy một chunk kém liên quan lên trên
+      // một chunk đúng hơn (khác với cách cộng điểm có trọng số trước đây).
       const CANDIDATES = 40;    // số chunk lấy về để re-rank
       const TOP_CONTEXT = 6;    // số chunk cuối cùng đưa vào context
-      const RECENCY_WEIGHT = 0.2; // trọng số độ mới (semantic vẫn áp đảo)
+      const SEMANTIC_TIE = 0.02; // chênh lệch cosine coi như "đúng ngang nhau"
 
       const ragCol = ragClient.db(RAG_DB).collection(RAG_CHUNKS);
       const docs = await ragCol.aggregate([
@@ -353,31 +359,37 @@ export const askLawAI = onRequest(
       const effective = cands.filter(c => !c.notYetEffective);
       if (effective.length) cands = effective;
 
-      // Chuẩn hoá recency về [0,1] theo min/max trong tập ứng viên.
-      const times = cands.map(c => c.recencyT).filter(t => !Number.isNaN(t));
-      const minT = Math.min(...times);
-      const maxT = Math.max(...times);
-      const span = maxT - minT;
+      // Chia "bậc đúng": mỗi bậc rộng SEMANTIC_TIE tính từ chunk giống nhất.
+      // Cùng bậc = đúng ngang nhau -> lúc đó mới so ngày hiệu lực.
+      const topSemantic = Math.max(...cands.map(c => c.semantic));
       for (const c of cands) {
-        const norm = span > 0 && !Number.isNaN(c.recencyT) ? (c.recencyT - minT) / span : 0;
-        c.score = c.semantic + RECENCY_WEIGHT * norm;
+        c.tier = Math.floor((topSemantic - c.semantic) / SEMANTIC_TIE);
       }
 
-      // Khử trùng theo lawId + article: giữ chunk điểm cao nhất mỗi (luật, điều)
+      // So sánh: (1) bậc đúng, (2) ngày hiệu lực mới nhất, (3) semantic thô.
+      const byRelevanceThenRecency = (a, b) => {
+        if (a.tier !== b.tier) return a.tier - b.tier;
+        const ta = Number.isNaN(a.recencyT) ? 0 : a.recencyT;
+        const tb = Number.isNaN(b.recencyT) ? 0 : b.recencyT;
+        if (tb !== ta) return tb - ta;
+        return b.semantic - a.semantic;
+      };
+
+      // Khử trùng theo lawId + article: giữ chunk tốt nhất mỗi (luật, điều)
       // -> tránh nhiều bản/phiên bản của cùng một điều luật lấn át context.
       const bestByKey = new Map();
       for (const c of cands) {
         const key = `${c.data.lawId || ''}|${c.data.article || ''}`;
         const prev = bestByKey.get(key);
-        if (!prev || c.score > prev.score) bestByKey.set(key, c);
+        if (!prev || byRelevanceThenRecency(c, prev) < 0) bestByKey.set(key, c);
       }
 
-      // Xếp hạng cuối: điểm tổng giảm dần, lấy TOP_CONTEXT, rồi sắp theo
-      // hiệu lực MỚI NHẤT trước để LLM thấy văn bản gần nhất trên cùng.
+      // Xếp hạng cuối: đúng nhất lên đầu (recency chỉ phá thế trong cùng bậc).
+      // Giữ nguyên thứ tự này khi đưa vào context để LLM đọc chunk đúng nhất
+      // trước; ngày hiệu lực vẫn ghi kèm từng chunk để LLM tự so sánh.
       const picked = [...bestByKey.values()]
-        .sort((a, b) => b.score - a.score)
-        .slice(0, TOP_CONTEXT)
-        .sort((a, b) => (b.activeT || 0) - (a.activeT || 0));
+        .sort(byRelevanceThenRecency)
+        .slice(0, TOP_CONTEXT);
 
       const fmt = t => (Number.isNaN(t) ? '(không rõ)' : new Date(t).toLocaleDateString('vi-VN'));
       const context = picked
@@ -393,9 +405,11 @@ export const askLawAI = onRequest(
         content: `Bạn là AI tư vấn pháp luật Việt Nam.
 Nhiệm vụ:
 - Chỉ dùng thông tin trong CONTEXT bên dưới.
-- CONTEXT được sắp xếp theo hiệu lực MỚI NHẤT trước. Khi nhiều văn bản cùng
-  điều chỉnh một vấn đề hoặc mâu thuẫn nhau, ưu tiên văn bản có ngày hiệu lực
-  GẦN NHẤT (mới nhất) và bỏ qua quy định đã bị thay thế.
+- CONTEXT được sắp xếp theo mức LIÊN QUAN tới câu hỏi (đúng nhất ở trên).
+  Hãy ưu tiên dùng những đoạn ĐÚNG nội dung câu hỏi trước.
+- Chỉ khi nhiều văn bản cùng điều chỉnh một vấn đề hoặc mâu thuẫn nhau thì mới
+  xét ngày: ưu tiên văn bản có ngày hiệu lực GẦN NHẤT (mới nhất) và bỏ qua quy
+  định đã bị thay thế.
 - Trả lời NGẮN GỌN, dễ hiểu.
 - Hãy diễn giải lại bằng ngôn ngữ tự nhiên.
 
@@ -427,31 +441,38 @@ ${context}`,
       let llmRes = null;
       let usedModel = null;
 
+      // MỌI lỗi từ model đều chỉ ghi log rồi thử model kế tiếp — không ném ra
+      // ngoài. Lý do: OpenRouter trả nhiều mã khác nhau cho cùng một tình huống
+      // "model này không dùng được nữa": 429 rate limit, 400, 404 khi slug
+      // :free bị chuyển thành trả phí, 402 hết credit, 5xx quá tải... Người
+      // dùng không cần biết chi tiết kỹ thuật; hết model thì báo nâng cấp.
       for (const model of MODELS) {
         console.log(`Thử model: ${model}`);
-        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-          Authorization: `${openrouterAPIKey.openrouter_api_key}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages: [...history, systemMsg, userMsg],
-            temperature: 0.2,
-            max_tokens: 500,
-            stream: true,
-          }),
-        });
+        let r;
+        try {
+          r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              Authorization: `${openrouterAPIKey.openrouter_api_key}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              messages: [...history, systemMsg, userMsg],
+              temperature: 0.2,
+              max_tokens: 500,
+              stream: true,
+            }),
+          });
+        } catch (e) {
+          console.warn(`Model ${model} không gọi được, thử tiếp:`, e?.message);
+          continue;
+        }
 
-if (r.status === 429 || r.status === 400) {  // ← thêm 400
-  const errText = await r.text().catch(() => '');
-  console.warn(`Model ${model} lỗi ${r.status}, thử tiếp:`, errText);
-  continue;
-}
         if (!r.ok || !r.body) {
           const errText = await r.text().catch(() => '');
-          throw new Error(`Model ${model} lỗi ${r.status}: ${errText}`);
+          console.warn(`Model ${model} lỗi ${r.status}, thử tiếp:`, errText);
+          continue;
         }
 
         llmRes = r;
@@ -460,7 +481,21 @@ if (r.status === 429 || r.status === 400) {  // ← thêm 400
       }
 
       if (!llmRes) {
-        res.write(`data: ${JSON.stringify({ error: 'Tất cả model đều bị rate limit. Vui lòng thử lại sau.' })}\n\n`);
+        // Hết lượt model: người dùng Free được mời nâng cấp (model trả phí có
+        // hạn mức riêng); người dùng Premium thì đúng là đang quá tải thật.
+        const payload = isPremium
+          ? {
+              error: 'Các model AI đang quá tải, vui lòng thử lại sau ít phút.',
+              code: 'RATE_LIMIT',
+              upgrade: false,
+            }
+          : {
+              error:
+                'Bạn đã dùng hết lượt của model miễn phí. Vui lòng nâng cấp bản có phí để tiếp tục sử dụng AI.',
+              code: 'RATE_LIMIT',
+              upgrade: true,
+            };
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
         res.write('data: [DONE]\n\n');
         res.end();
         return;

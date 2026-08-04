@@ -12,7 +12,8 @@ import {
   Platform,
   StatusBar,
   Dimensions,
-  Vibration
+  Vibration,
+  Alert
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -27,12 +28,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const API_URL = 'https://us-central1-project2-197c0.cloudfunctions.net/askLawAI';
 
-const INITIAL_MESSAGES = [
+// Lời chào mở đầu. Dùng hàm (không dùng const cố định) để khi bấm "làm mới"
+// khung chat thì timestamp cũng là thời điểm hiện tại. Giữ id '0' vì handleSend
+// loại message này ra khỏi history gửi lên server.
+const makeInitialMessages = () => [
   {
     id: '0',
     role: 'assistant',
     text: 'Xin chào! Tôi là trợ lý tra cứu pháp luật AI. Bạn có thể hỏi tôi bất kỳ điều gì về pháp luật Việt Nam.',
-    timestamp: new Date(Date.now() - 60000),
+    timestamp: new Date(),
   },
 ];
 
@@ -185,7 +189,15 @@ export const AIChatScreen = () => {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
 
-  const { isPremium, planLabel, expiryDate } = useSubscription();
+  const {
+    isPremium,
+    planLabel,
+    expiryDate,
+    canUsePremium,
+    trialRemaining,
+    trialTotal,
+    consumeTrial,
+  } = useSubscription();
   const [paywallVisible, setPaywallVisible] = useState(false);
   // Ref để streamAIResponse luôn đọc được trạng thái premium mới nhất
   // mà không cần đưa isPremium vào dependency của useCallback.
@@ -194,7 +206,19 @@ export const AIChatScreen = () => {
     isPremiumRef.current = isPremium;
   }, [isPremium]);
 
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  // Đang dùng lượt dùng thử (chưa mua nhưng vẫn được gọi model premium).
+  const canUsePremiumRef = useRef(canUsePremium);
+  const usingTrialRef = useRef(false);
+  useEffect(() => {
+    canUsePremiumRef.current = canUsePremium;
+    usingTrialRef.current = !isPremium && trialRemaining > 0;
+  }, [canUsePremium, isPremium, trialRemaining]);
+  const consumeTrialRef = useRef(consumeTrial);
+  useEffect(() => {
+    consumeTrialRef.current = consumeTrial;
+  }, [consumeTrial]);
+
+  const [messages, setMessages] = useState(makeInitialMessages);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -317,6 +341,22 @@ const scheduleNextChar = useCallback(() => {
     let firstChunk = true;
     let processedLength = 0;
 
+    // Lượt dùng thử chỉ bị trừ khi câu trả lời thật sự bắt đầu về (lỗi mạng /
+    // rate limit thì không mất lượt). Cờ này đảm bảo mỗi câu chỉ trừ 1 lần.
+    let trialEndedNotice = false; // true nếu lượt vừa trừ là lượt cuối
+    const spendTrialOnce = (() => {
+      let charged = false;
+      return () => {
+        if (charged || isPremiumRef.current || !usingTrialRef.current) return;
+        charged = true;
+        Promise.resolve(consumeTrialRef.current?.())
+          .then(remaining => {
+            if (remaining === 0) trialEndedNotice = true;
+          })
+          .catch(() => {});
+      };
+    })();
+
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
 
@@ -343,6 +383,7 @@ const scheduleNextChar = useCallback(() => {
             timestamp: new Date(),
           },
         ]);
+        scrollToBottom();
         return;
       }
 
@@ -368,17 +409,48 @@ try {
       charTimerRef.current = null;
     }
     charQueueRef.current = [];
+
+    // Model không dùng được (hết lượt / bị khai tử / hết credit / quá tải):
+    // luôn quy về thông báo nâng cấp, KHÔNG bao giờ hiện lỗi kỹ thuật thô của
+    // OpenRouter cho người dùng. Regex là lưới an toàn cho trường hợp server
+    // chưa deploy bản mới (bản cũ trả nguyên văn message 404 "unavailable...").
+    const raw = String(json.error || '');
+    const isRateLimit =
+      json.code === 'RATE_LIMIT' ||
+      /rate ?limit|unavailable|no endpoints|not found|quota|insufficient|credit|\b40[0234]\b|\b429\b|\b5\d{2}\b/i.test(
+        raw,
+      );
+    // Chỉ người ĐÃ MUA mới nhận thông báo "quá tải"; còn lại luôn mời nâng cấp.
+    // Không dùng cờ json.upgrade của server: trạng thái mua thật nằm ở client.
+    const shouldUpgrade = isRateLimit && !isPremiumRef.current;
+
+    let text;
+    if (shouldUpgrade) {
+      text = usingTrialRef.current
+        ? // Còn lượt dùng thử -> không nói "đã dùng hết lượt" (sai sự thật),
+          // và lượt dùng thử cũng chưa bị trừ vì câu trả lời không về được.
+          'Các model miễn phí hiện không khả dụng. Vui lòng nâng cấp bản có phí để sử dụng AI ổn định.'
+        : 'Bạn đã dùng hết lượt của model miễn phí. Vui lòng nâng cấp bản có phí để tiếp tục sử dụng AI.';
+    } else if (isRateLimit) {
+      text = 'Các model AI đang quá tải, vui lòng thử lại sau ít phút.';
+    } else {
+      text = `Có lỗi xảy ra: ${json.error}`;
+    }
+
     setMessages(prev => [
       ...prev,
       {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        text: json.error.includes('rate limit') || json.error.includes('Rate limit')
-          ? 'Hệ thống đang bận, vui lòng thử lại sau ít phút.'
-          : `Có lỗi xảy ra: ${json.error}`,
+        text,
         timestamp: new Date(),
       },
     ]);
+    // Chỉ báo bằng bubble trong khung chat: không alert, không tự mở màn hình
+    // thanh toán. Muốn mua thì user tự bấm pill "Nâng cấp" ở thanh trên.
+    // Bắt buộc cuộn xuống, kể cả khi user đang cuộn lên trên đọc lại — nếu
+    // không thì bubble cảnh báo nằm dưới màn hình và user không thấy gì.
+    scrollToBottom();
     return;
   }
 
@@ -388,6 +460,7 @@ try {
   if (firstChunk) {
     setIsTyping(false);
     firstChunk = false;
+    spendTrialOnce();
     setMessages(prev => [
       ...prev,
       {
@@ -413,6 +486,20 @@ try {
           } else {
             setIsTyping(false);
             setIsStreaming(false);
+            // Vừa dùng hết lượt dùng thử -> nói rõ từ giờ chuyển sang bản Free.
+            if (trialEndedNotice) {
+              trialEndedNotice = false;
+              setMessages(prev => [
+                ...prev,
+                {
+                  id: `trial-${Date.now()}`,
+                  role: 'assistant',
+                  text: 'Bạn đã dùng hết lượt dùng thử Premium. Các câu hỏi tiếp theo sẽ dùng model miễn phí. Nâng cấp bản có phí để tiếp tục dùng model chất lượng cao.',
+                  timestamp: new Date(),
+                },
+              ]);
+              scrollToBottom();
+            }
           }
         };
         waitQueue();
@@ -433,6 +520,7 @@ try {
           timestamp: new Date(),
         },
       ]);
+      scrollToBottom();
     };
 
     xhr.ontimeout = () => {
@@ -449,6 +537,7 @@ try {
           timestamp: new Date(),
         },
       ]);
+      scrollToBottom();
     };
 
     xhr.timeout = 60000;
@@ -456,7 +545,8 @@ try {
       JSON.stringify({
         question: userText,
         history,
-        plan: isPremiumRef.current ? 'premium' : 'free',
+        // Đã mua HOẶC còn lượt dùng thử -> dùng model chất lượng cao.
+        plan: canUsePremiumRef.current ? 'premium' : 'free',
       }),
     );
   }, [enqueueChunk, scrollToBottom]);
@@ -468,8 +558,15 @@ try {
     Keyboard.dismiss();
     setInputText('');
 
+    // Bỏ lời chào + các bubble thông báo (lỗi, hết lượt dùng thử) khỏi history
+    // để LLM không coi chúng là nội dung hội thoại.
     const history = messages
-      .filter(m => m.id !== '0')
+      .filter(
+        m =>
+          m.id !== '0' &&
+          !m.id.startsWith('err-') &&
+          !m.id.startsWith('trial-'),
+      )
       .map(m => ({ role: m.role, content: m.text }));
 
     const userMsg = {
@@ -483,6 +580,42 @@ try {
     scrollToBottom();
     streamAIResponse(text, history);
   }, [inputText, isStreaming, messages, streamAIResponse, scrollToBottom]);
+
+  // Xoá sạch khung chat, huỷ stream đang chạy và quay về lời chào ban đầu.
+  const handleResetChat = useCallback(() => {
+    const doReset = () => {
+      try {
+        xhrRef.current?.abort();
+      } catch (_) {}
+      xhrRef.current = null;
+
+      if (charTimerRef.current) {
+        clearTimeout(charTimerRef.current);
+        charTimerRef.current = null;
+      }
+      charQueueRef.current = [];
+      charCountRef.current = 0;
+      assistantIdRef.current = null;
+
+      setIsTyping(false);
+      setIsStreaming(false);
+      setInputText('');
+      setMessages(makeInitialMessages());
+
+      autoScrollRef.current = true;
+      Keyboard.dismiss();
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 60);
+    };
+
+    Alert.alert(
+      'Làm mới khung chat',
+      'Toàn bộ đoạn hội thoại hiện tại sẽ bị xoá và bắt đầu lại từ đầu.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        { text: 'Làm mới', style: 'destructive', onPress: doReset },
+      ],
+    );
+  }, []);
 
   const handleCopy = useCallback(
     text => {
@@ -540,26 +673,49 @@ try {
           <Text style={styles.headerTitle}>Trợ lý Luật AI</Text>
         </View>
 
-        {isPremium ? (
-          <View style={styles.premiumPill}>
-            <Ionicons name="diamond" size={12} color="#FFD479" />
-            <Text style={styles.premiumPillText}>
-              Premium{planLabel ? ` · ${planLabel}` : ''}
-            </Text>
-          </View>
-        ) : (
+        <View style={styles.topBarRight}>
           <TouchableOpacity
-            style={styles.freePill}
-            activeOpacity={0.8}
-            onPress={() => setPaywallVisible(true)}
+            style={styles.resetBtn}
+            activeOpacity={0.7}
+            onPress={handleResetChat}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.freePillText}>Bản Free</Text>
-            <View style={styles.upgradeChip}>
-              <Ionicons name="sparkles" size={11} color="#fff" />
-              <Text style={styles.upgradeChipText}>Nâng cấp</Text>
-            </View>
+            <Ionicons name="refresh" size={16} color="#9A9AB8" />
           </TouchableOpacity>
-        )}
+
+          {isPremium ? (
+            <View style={styles.premiumPill}>
+              <Ionicons name="diamond" size={12} color="#FFD479" />
+              <Text style={styles.premiumPillText}>
+                Premium{planLabel ? ` · ${planLabel}` : ''}
+              </Text>
+            </View>
+          ) : trialRemaining > 0 ? (
+            // Máy mới cài: còn lượt dùng thử model premium.
+            <TouchableOpacity
+              style={styles.trialPill}
+              activeOpacity={0.8}
+              onPress={() => setPaywallVisible(true)}
+            >
+              <Ionicons name="gift" size={12} color="#7FE3A1" />
+              <Text style={styles.trialPillText}>
+                Dùng thử {trialRemaining}/{trialTotal}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.freePill}
+              activeOpacity={0.8}
+              onPress={() => setPaywallVisible(true)}
+            >
+              <Text style={styles.freePillText}>Bản Free</Text>
+              <View style={styles.upgradeChip}>
+                <Ionicons name="sparkles" size={11} color="#fff" />
+                <Text style={styles.upgradeChipText}>Nâng cấp</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {isPremium && expiryDate && (
@@ -693,6 +849,29 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  resetBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16162A',
+    borderWidth: 1,
+    borderColor: '#26263C',
+  },
+  trialPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#12251A',
+    borderWidth: 1,
+    borderColor: '#2C4A38',
+  },
+  trialPillText: { color: '#7FE3A1', fontSize: 12, fontWeight: '700' },
   premiumPill: {
     flexDirection: 'row',
     alignItems: 'center',

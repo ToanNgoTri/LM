@@ -46,6 +46,64 @@ async function writeCache(data) {
   } catch (_) {}
 }
 
+// ── Dùng thử Premium: máy mới cài được TRIAL_TOTAL lượt hỏi chất lượng cao ──
+// Đếm lượt lưu trong DocumentDir: còn qua các lần cập nhật app, mất khi user
+// xoá app (coi như "máy mới tải" -> đúng ý nghĩa dùng thử cho người mới).
+export const TRIAL_TOTAL = 3;
+const TRIAL_FILE = Dirs.DocumentDir + '/premium-trial.json';
+
+async function readTrialUsed() {
+  try {
+    if (await FileSystem.exists(TRIAL_FILE)) {
+      const d = JSON.parse(await FileSystem.readFile(TRIAL_FILE, 'utf8'));
+      const n = Number(d?.used);
+      if (Number.isFinite(n) && n > 0) return Math.min(n, TRIAL_TOTAL);
+    }
+  } catch (_) {}
+  return 0;
+}
+
+async function writeTrialUsed(used) {
+  try {
+    await FileSystem.writeFile(TRIAL_FILE, JSON.stringify({ used }), 'utf8');
+  } catch (_) {}
+}
+
+function usePremiumTrial() {
+  // Khởi tạo = ĐÃ DÙNG HẾT: trước khi đọc xong file thì không cấp lượt premium,
+  // tránh trường hợp user bấm gửi ngay lúc mở app và được dùng lố.
+  const [trialUsed, setTrialUsed] = useState(TRIAL_TOTAL);
+  const [trialLoaded, setTrialLoaded] = useState(false);
+  const usedRef = useRef(TRIAL_TOTAL);
+
+  useEffect(() => {
+    readTrialUsed().then(n => {
+      usedRef.current = n;
+      setTrialUsed(n);
+      setTrialLoaded(true);
+    });
+  }, []);
+
+  // Trừ 1 lượt dùng thử. Trả về số lượt còn lại sau khi trừ.
+  const consumeTrial = useCallback(async () => {
+    const next = Math.min(TRIAL_TOTAL, usedRef.current + 1);
+    if (next !== usedRef.current) {
+      usedRef.current = next;
+      setTrialUsed(next);
+      await writeTrialUsed(next);
+    }
+    return TRIAL_TOTAL - next;
+  }, []);
+
+  return {
+    trialTotal: TRIAL_TOTAL,
+    trialUsed,
+    trialRemaining: Math.max(0, TRIAL_TOTAL - trialUsed),
+    trialLoaded,
+    consumeTrial,
+  };
+}
+
 const DEFAULT_VALUE = {
   ready: false,
   iapAvailable: IAP_AVAILABLE,
@@ -56,6 +114,14 @@ const DEFAULT_VALUE = {
   loading: true,
   purchasing: false,
   plans: PLANS.map(p => ({ ...p, displayPrice: p.priceFallback })),
+  // Dùng thử
+  trialTotal: TRIAL_TOTAL,
+  trialUsed: TRIAL_TOTAL,
+  trialRemaining: 0,
+  trialLoaded: false,
+  consumeTrial: async () => 0,
+  // true khi được phép gọi model chất lượng cao (đã mua HOẶC còn lượt dùng thử)
+  canUsePremium: false,
   buy: async () => {},
   restore: async () => {},
   refresh: async () => {},
@@ -96,6 +162,7 @@ function IapProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const didInit = useRef(false);
+  const trial = usePremiumTrial();
 
   const applyEntitlement = useCallback(async ent => {
     setEntitlement(ent);
@@ -254,6 +321,8 @@ function IapProvider({ children }) {
     loading,
     purchasing,
     plans,
+    ...trial,
+    canUsePremium: entitlement.isPremium || trial.trialRemaining > 0,
     buy,
     restore,
     refresh: refreshEntitlement,
@@ -274,6 +343,7 @@ function FallbackProvider({ children }) {
     planLabel: '',
     expiryDate: null,
   });
+  const trial = usePremiumTrial();
 
   useEffect(() => {
     readCache().then(c => {
@@ -304,6 +374,8 @@ function FallbackProvider({ children }) {
     plan: entitlement.plan,
     planLabel: entitlement.planLabel,
     expiryDate: entitlement.expiryDate,
+    ...trial,
+    canUsePremium: entitlement.isPremium || trial.trialRemaining > 0,
     buy: notReady,
     restore: notReady,
     refresh: async () => {},
