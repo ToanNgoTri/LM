@@ -28,7 +28,8 @@ const IAP_AVAILABLE = !!(RNIap && RNIap.useIAP);
 
 // ── File cache: hiển thị nhanh trạng thái đã biết trước khi hỏi lại store ────
 // Store (Google/Apple) mới là nguồn xác thực — cache chỉ để hiển thị tức thì.
-// Khi cài lại app cache mất, nhưng restore từ store sẽ khôi phục entitlement.
+// Khi cài lại app cache mất: Android tự restore lúc mở app, iOS cần người dùng
+// bấm "Khôi phục giao dịch đã mua" trong PaywallModal (Apple bắt xác thực Apple ID).
 const CACHE_FILE = Dirs.DocumentDir + '/subscription.json';
 
 async function readCache() {
@@ -225,15 +226,22 @@ function IapProvider({ children }) {
     });
   }, []);
 
-  // Khi kết nối store xong: lấy giá sản phẩm + khôi phục entitlement (survive reinstall).
+  // Khi kết nối store xong: lấy giá sản phẩm + đọc lại entitlement.
+  // KHÔNG gọi restorePurchases() trên iOS ở đây: nó chạy AppStore.sync(), và Apple
+  // thiết kế hàm này luôn bắt xác thực lại Apple ID -> popup đăng nhập ngay khi mở
+  // app. Apple yêu cầu chỉ sync khi người dùng chủ động bấm khôi phục (PaywallModal).
+  // getActiveSubscriptions đọc transaction đã có trên máy nên vẫn nhận đúng gói
+  // đang active mà không cần đăng nhập.
   useEffect(() => {
     if (!connected || didInit.current) return;
     didInit.current = true;
     (async () => {
       try {
         await fetchProducts({ skus: SUBSCRIPTION_SKUS, type: 'subs' });
-        // restorePurchases đảm bảo lấy lại subscription đã mua trên tài khoản store.
-        await restorePurchases();
+        // Android: restore im lặng, không hỏi tài khoản -> giữ để survive reinstall.
+        if (Platform.OS === 'android') {
+          await restorePurchases();
+        }
       } catch (e) {
         console.warn('[Subscription] init lỗi:', e?.message);
       }

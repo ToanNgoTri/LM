@@ -303,7 +303,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+<<<<<<< HEAD
 				CURRENT_PROJECT_VERSION = 55;
+=======
+				CURRENT_PROJECT_VERSION = 56;
+>>>>>>> 41b2482 (a)
 				DEVELOPMENT_TEAM = WRLJ8WQ46Z;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = lawMachine/Info.plist;
@@ -312,7 +316,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+<<<<<<< HEAD
 				MARKETING_VERSION = 2.990;
+=======
+				MARKETING_VERSION = 3.0;
+>>>>>>> 41b2482 (a)
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -334,7 +342,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+<<<<<<< HEAD
 				CURRENT_PROJECT_VERSION = 55;
+=======
+				CURRENT_PROJECT_VERSION = 56;
+>>>>>>> 41b2482 (a)
 				DEVELOPMENT_TEAM = WRLJ8WQ46Z;
 				INFOPLIST_FILE = lawMachine/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -342,7 +354,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+<<<<<<< HEAD
 				MARKETING_VERSION = 2.990;
+=======
+				MARKETING_VERSION = 3.0;
+>>>>>>> 41b2482 (a)
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
