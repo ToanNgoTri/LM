@@ -1,18 +1,20 @@
-import React, { forwardRef, memo, useImperativeHandle } from 'react';
+import React, {
+  forwardRef,
+  memo,
+  useImperativeHandle,
+  useMemo,
+} from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { scrollTo, runOnUI } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   DropProvider,
   SortableDirection,
   useSortableList,
 } from 'react-native-reanimated-dnd';
 
-// KHÔNG dùng ScrollView của react-native-gesture-handler.
-// Bản RNGH bọc ScrollView trong NativeViewGestureHandler. Trên Android, khi
-// nhấc tay mà các Gesture.Pan của item (activateAfterLongPress) phân giải thành
-// failed, RNGH gửi ACTION_CANCEL xuống ScrollView thay vì ACTION_UP. Android chỉ
-// khởi động fling ở ACTION_UP; gặp ACTION_CANCEL nó gọi endDrag() -> cuộn dừng
-// ngay, mất quán tính. iOS không dính vì UIScrollView chạy pan recognizer riêng.
+// Dùng ScrollView gốc của React Native (không phải bản của gesture-handler),
+// rồi khai báo nó với RNGH bằng Gesture.Native() ở dưới.
 const AnimatedScrollView = Animated.ScrollView;
 
 // Bản sao của <Sortable> gốc (chiều dọc, useFlatList=false) — render y hệt
@@ -51,6 +53,13 @@ export const SortableLawList = memo(
       itemKeyExtractor,
     });
 
+    // Khai báo cuộn native của ScrollView thành một gesture mà RNGH biết tới.
+    // Các Gesture.Pan của item sẽ chạy ĐỒNG THỜI với nó (xem scrollGesture
+    // truyền xuống dưới), nhờ vậy orchestrator không gửi ACTION_CANCEL xuống
+    // ScrollView khi Pan chưa/không kích hoạt -> ScrollView vẫn nhận ACTION_UP
+    // -> Android khởi động fling bình thường.
+    const scrollGesture = useMemo(() => Gesture.Native(), []);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -70,28 +79,31 @@ export const SortableLawList = memo(
     // nhau khiến mọi MotionEvent phải đi qua 2 tầng khi cuộn.
     return (
       <DropProvider ref={dropProviderRef}>
-        <AnimatedScrollView
-          ref={scrollViewRef}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          style={[styles.scrollView, style]}
-          contentContainerStyle={[
-            { height: contentHeight },
-            contentContainerStyle,
-          ]}
-          onScrollEndDrag={handleScrollEnd}
-          onMomentumScrollEnd={handleScrollEnd}
-        >
-          {data.map((item, index) => {
-            const itemProps = getItemProps(item, index);
-            return renderItem({
-              item,
-              index,
-              direction: SortableDirection.Vertical,
-              ...itemProps,
-            });
-          })}
-        </AnimatedScrollView>
+        <GestureDetector gesture={scrollGesture}>
+          <AnimatedScrollView
+            ref={scrollViewRef}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            style={[styles.scrollView, style]}
+            contentContainerStyle={[
+              { height: contentHeight },
+              contentContainerStyle,
+            ]}
+            onScrollEndDrag={handleScrollEnd}
+            onMomentumScrollEnd={handleScrollEnd}
+          >
+            {data.map((item, index) => {
+              const itemProps = getItemProps(item, index);
+              return renderItem({
+                item,
+                index,
+                direction: SortableDirection.Vertical,
+                scrollGesture,
+                ...itemProps,
+              });
+            })}
+          </AnimatedScrollView>
+        </GestureDetector>
       </DropProvider>
     );
   }),
