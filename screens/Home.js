@@ -46,6 +46,15 @@ const GAP = 8;
 //                       của material-top-tabs, hoặc phần khác) => A vô ích.
 const ENABLE_SORT = true;
 
+// ==== PHÉP THỬ: giới hạn số item đưa vào danh sách kéo-thả ====
+// Giả thuyết: fling chết vì TOÀN BỘ N item được mount (mỗi item ~8 native view),
+// bộ vẽ không theo kịp chứ không phải gesture bị huỷ.
+//   5    -> chỉ 5 item. Nếu LÚC NÀY VUỐT CÓ TRÔI => đúng giả thuyết, thủ phạm là
+//           số lượng view, và lời giải là phương án A (chỉ render Sortable khi
+//           vào chế độ sắp xếp).
+//   null -> không giới hạn (trạng thái thật).
+const TEST_LIMIT = 5;
+
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
 /* ------------------------------------------------------------------ */
@@ -115,12 +124,11 @@ export default function Home({}) {
 
   // Sortable đọc trực tiếp `item.id` để dựng map vị trí, nên phải gắn id thật.
   // Giữ nguyên shape gốc { "<lawKey>": {...} } và thêm id = lawKey.
-  const sortableData = useMemo(
-    () =>
-      Array.isArray(data)
-        ? data.map(item => ({ ...item, id: Object.keys(item)[0] }))
-        : [],    [data],
-  );
+  const sortableData = useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    const src = TEST_LIMIT == null ? data : data.slice(0, TEST_LIMIT);
+    return src.map(item => ({ ...item, id: Object.keys(item)[0] }));
+  }, [data]);
 
   // ---- Đo chiều cao thật của từng card TRƯỚC khi đưa vào Sortable ----
   // Sortable (chế độ chiều cao động) định vị item theo `top` tuyệt đối và chỉ
