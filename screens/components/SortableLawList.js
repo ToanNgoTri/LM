@@ -89,8 +89,31 @@ export const SortableLawList = memo(
               { height: contentHeight },
               contentContainerStyle,
             ]}
-            onScrollEndDrag={handleScrollEnd}
-            onMomentumScrollEnd={handleScrollEnd}
+            // ===== LOG TẠM — xoá sau khi chẩn đoán xong =====
+            onLayout={e =>
+              console.log(
+                `[SCROLL] viewport=${Math.round(
+                  e.nativeEvent.layout.height,
+                )} contentHeight=${Math.round(contentHeight)} scrollRange=${Math.round(
+                  contentHeight - e.nativeEvent.layout.height,
+                )}`,
+              )
+            }
+            onScrollBeginDrag={() => console.log('[SCROLL] beginDrag')}
+            onScrollEndDrag={e => {
+              const v = e?.nativeEvent?.velocity;
+              console.log(
+                `[SCROLL] endDrag velocity=${v ? JSON.stringify(v) : 'undefined'}`,
+              );
+              handleScrollEnd();
+            }}
+            onMomentumScrollBegin={() =>
+              console.log('[SCROLL] momentumBegin  <<< FLING KHỞI ĐỘNG')
+            }
+            onMomentumScrollEnd={() => {
+              console.log('[SCROLL] momentumEnd');
+              handleScrollEnd();
+            }}
           >
             {data.map((item, index) => {
               const itemProps = getItemProps(item, index);

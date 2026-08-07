@@ -53,7 +53,7 @@ const ENABLE_SORT = true;
 //           số lượng view, và lời giải là phương án A (chỉ render Sortable khi
 //           vào chế độ sắp xếp).
 //   null -> không giới hạn (trạng thái thật).
-const TEST_LIMIT = 5;
+const TEST_LIMIT = null;
 
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
