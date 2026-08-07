@@ -1,14 +1,19 @@
 import React, { forwardRef, memo, useImperativeHandle } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { scrollTo, runOnUI } from 'react-native-reanimated';
-import { ScrollView } from 'react-native-gesture-handler';
 import {
   DropProvider,
   SortableDirection,
   useSortableList,
 } from 'react-native-reanimated-dnd';
 
-const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+// KHÔNG dùng ScrollView của react-native-gesture-handler.
+// Bản RNGH bọc ScrollView trong NativeViewGestureHandler. Trên Android, khi
+// nhấc tay mà các Gesture.Pan của item (activateAfterLongPress) phân giải thành
+// failed, RNGH gửi ACTION_CANCEL xuống ScrollView thay vì ACTION_UP. Android chỉ
+// khởi động fling ở ACTION_UP; gặp ACTION_CANCEL nó gọi endDrag() -> cuộn dừng
+// ngay, mất quán tính. iOS không dính vì UIScrollView chạy pan recognizer riêng.
+const AnimatedScrollView = Animated.ScrollView;
 
 // Bản sao của <Sortable> gốc (chiều dọc, useFlatList=false) — render y hệt
 // (cùng dùng useSortableList) và ĐƯỢC BỌC memo giống bản gốc để hiệu năng cuộn

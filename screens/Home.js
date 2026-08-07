@@ -44,7 +44,7 @@ const GAP = 8;
 //                       kéo-thả => đi tiếp phương án A (tách 2 chế độ).
 // Nếu false vẫn GIẬT -> thủ phạm nằm ngoài danh sách (bản debug, ViewPager2
 //                       của material-top-tabs, hoặc phần khác) => A vô ích.
-const ENABLE_SORT = false;
+const ENABLE_SORT = true;
 
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
