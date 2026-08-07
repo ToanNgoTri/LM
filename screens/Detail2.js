@@ -800,7 +800,7 @@ export function Detail2({}) {
           paddingTop: insets.top + 5,
           borderBottomWidth: 1,
           borderBottomColor: 'black',
-          zIndex: 20,
+          zIndex: 0,
         }}
       >
                          <ScreenToggle active="searchlaw" />

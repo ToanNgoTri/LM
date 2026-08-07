@@ -22,6 +22,30 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// ── Job câu trả lời AI ───────────────────────────────────────────────────────
+// Khi user out ra app khác, HĐH đóng băng JS của app và ngắt kết nối HTTP, nên
+// app KHÔNG THỂ tự nhận nốt câu trả lời. Vì vậy askLawAI luôn chạy tiếp cho
+// xong (kể cả khi client đã ngắt) và ghi câu trả lời vào collection này; lúc
+// user quay lại app thì app gọi getLawAIAnswer để lấy về.
+// Doc: { _id: jobId, status: 'running'|'done'|'error', text, error, code,
+//        createdAt, updatedAt }
+const AI_JOBS = 'AILawJobs';
+const AI_JOB_TTL_SECONDS = 24 * 60 * 60; // job cũ tự hết hạn, không cần cron
+const VALID_JOB_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
+let aiJobsIndexReady = null;
+async function aiJobsCol() {
+  const col = client.db('LawMachine').collection(AI_JOBS);
+  if (!aiJobsIndexReady) {
+    // createIndex là idempotent -> gọi 1 lần mỗi instance là đủ.
+    aiJobsIndexReady = col
+      .createIndex({ createdAt: 1 }, { expireAfterSeconds: AI_JOB_TTL_SECONDS })
+      .catch(e => console.warn('AILawJobs TTL index:', e?.message));
+  }
+  await aiJobsIndexReady;
+  return col;
+}
+
 // Điều kiện lọc theo khoảng ngày ký (info.lawDaySign lưu dạng chuỗi ISO,
 // so sánh chuỗi ISO theo thứ tự từ điển là hợp lệ).
 function buildDateCondition(dateFrom, dateTo) {
@@ -238,7 +262,9 @@ export const getSuggestDescs = onRequest(async (req, res) => {
 
 
 export const askLawAI = onRequest(
-  { memory: '256MiB' },
+  // timeoutSeconds cao hơn mặc định (60s) vì hàm phải chạy tiếp cho xong câu
+  // trả lời ngay cả khi client đã ngắt kết nối (user out ra app khác).
+  { memory: '256MiB', timeoutSeconds: 180 },
   async (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -256,6 +282,72 @@ export const askLawAI = onRequest(
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
+
+    // ── Ghi câu trả lời ra AILawJobs để app lấy lại sau ───────────────────
+    const jobId = VALID_JOB_ID.test(String(req.body.jobId || ''))
+      ? String(req.body.jobId)
+      : null;
+    let jobCol = null;
+    if (jobId) {
+      try {
+        jobCol = await aiJobsCol();
+        await jobCol.updateOne(
+          { _id: jobId },
+          {
+            $set: {
+              status: 'running',
+              text: '',
+              error: null,
+              code: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+          },
+          { upsert: true },
+        );
+      } catch (e) {
+        // Không lưu được job thì vẫn phải trả lời bình thường.
+        console.warn('AILawJobs init:', e?.message);
+        jobCol = null;
+      }
+    }
+
+    let answer = '';
+    const saveJob = async fields => {
+      if (!jobCol) return;
+      try {
+        await jobCol.updateOne(
+          { _id: jobId },
+          { $set: { ...fields, updatedAt: new Date() } },
+        );
+      } catch (e) {
+        console.warn('AILawJobs save:', e?.message);
+      }
+    };
+
+    // Client ngắt giữa đường (app xuống background) -> ngừng ghi ra socket
+    // nhưng KHÔNG dừng việc sinh câu trả lời.
+    let clientGone = false;
+    res.on('close', () => {
+      if (!res.writableEnded) clientGone = true;
+    });
+    res.on('error', () => { clientGone = true; });
+
+    const sseWrite = line => {
+      if (clientGone || res.writableEnded) return;
+      try {
+        res.write(line);
+      } catch (_) {
+        clientGone = true;
+      }
+    };
+    const sse = payload => sseWrite(`data: ${JSON.stringify(payload)}\n\n`);
+    const sseDone = () => {
+      sseWrite('data: [DONE]\n\n');
+      if (!res.writableEnded) {
+        try { res.end(); } catch (_) {}
+      }
+    };
 
     // Model miễn phí (mặc định) cho người dùng bản Free.
     // Lưu ý: slug ':free' có thể bị OpenRouter khai tử bất cứ lúc nào (trả 404
@@ -326,9 +418,10 @@ export const askLawAI = onRequest(
       ]).toArray();
 
       if (!docs.length) {
-        res.write(`data: ${JSON.stringify({ text: 'Không tìm thấy dữ liệu.' })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
+        answer = 'Không tìm thấy dữ liệu.';
+        await saveJob({ status: 'done', text: answer });
+        sse({ text: answer });
+        sseDone();
         return;
       }
 
@@ -499,9 +592,13 @@ ${context}`,
               code: 'RATE_LIMIT',
               upgrade: true,
             };
-        res.write(`data: ${JSON.stringify(payload)}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
+        await saveJob({
+          status: 'error',
+          error: payload.error,
+          code: payload.code,
+        });
+        sse(payload);
+        sseDone();
         return;
       }
 
@@ -511,6 +608,10 @@ ${context}`,
       const reader = llmRes.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      // Lưu tiến độ định kỳ (không phải mỗi token) để user quay lại giữa lúc
+      // đang sinh vẫn thấy được phần đã có, mà không nện Mongo mỗi chunk.
+      let lastProgressSave = 0;
+      const PROGRESS_SAVE_MS = 2000;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -524,31 +625,88 @@ ${context}`,
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
           if (data === '[DONE]') {
-            res.write('data: [DONE]\n\n');
-            res.end();
+            await saveJob({ status: 'done', text: answer });
+            sseDone();
             return;
           }
           try {
             const json = JSON.parse(data);
             const text = json.choices?.[0]?.delta?.content;
-            if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
+            if (text) {
+              answer += text;
+              sse({ text });
+              const now = Date.now();
+              if (now - lastProgressSave > PROGRESS_SAVE_MS) {
+                lastProgressSave = now;
+                saveJob({ text: answer }); // fire-and-forget, không chặn stream
+              }
+            }
           } catch (_) {}
         }
       }
 
-      res.write('data: [DONE]\n\n');
-      res.end();
+      await saveJob({ status: 'done', text: answer });
+      sseDone();
 
     } catch (err) {
       console.error('askLawAI error:', err);
-      if (!res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        res.end();
-      }
+      // Đã sinh được một phần trước khi lỗi -> vẫn coi là done để app lấy về
+      // phần đó, thay vì mất trắng.
+      await saveJob(
+        answer
+          ? { status: 'done', text: answer }
+          : { status: 'error', error: err.message, code: null },
+      );
+      sse({ error: err.message });
+      sseDone();
     }
   }
 );
+
+// ─── getLawAIAnswer ──────────────────────────────────────────────────────────
+// App gọi khi quay lại foreground mà kết nối stream đã bị HĐH ngắt: lấy câu trả
+// lời mà askLawAI vẫn sinh tiếp ở server.
+// Body: { jobId }
+// Trả: { status: 'running'|'done'|'error'|'unknown', text, error, code }
+//   running -> app hiện 3 dấu chấm và hỏi lại sau ~1.5s
+//   done    -> text là câu trả lời đầy đủ
+//   unknown -> server không có job (đã hết hạn / chưa kịp tạo) -> app tự gửi lại
+export const getLawAIAnswer = onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  if (req.method !== 'POST') {
+    res.status(405).json({ status: 'unknown' });
+    return;
+  }
+
+  const jobId = String(req.body?.jobId || '');
+  if (!VALID_JOB_ID.test(jobId)) {
+    res.status(400).json({ status: 'unknown' });
+    return;
+  }
+
+  try {
+    const col = await aiJobsCol();
+    const doc = await col.findOne({ _id: jobId });
+    if (!doc) {
+      res.json({ status: 'unknown', text: '', error: null, code: null });
+      return;
+    }
+    res.json({
+      status: doc.status || 'running',
+      text: doc.text || '',
+      error: doc.error || null,
+      code: doc.code || null,
+    });
+  } catch (e) {
+    console.error('getLawAIAnswer error:', e);
+    // Lỗi đọc DB: báo 'running' để app thử lại chứ không vội kết luận mất job.
+    res.status(500).json({ status: 'running', text: '', error: null, code: null });
+  }
+});
 
 // ─── appConfig (ĐỌC) ─────────────────────────────────────────────────────────
 // Nguồn cấu hình cập nhật cho app. Doc Mongo LawMachine.AppConfig, _id = 'update':
