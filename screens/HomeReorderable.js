@@ -267,7 +267,21 @@ export default function HomeReorderable({}) {
   }, [data]);
 
   const handleReorder = useCallback(({ from, to }) => {
-    const next = reorderItems(dataRef.current, from, to);
+    const cur = dataRef.current;
+
+    // ===== LOG TẠM — xoá sau khi tìm ra nguyên nhân reorder sai =====
+    const nameAt = i => {
+      const it = cur[i];
+      return it ? Object.values(it)[0]['lawNameDisplay'].slice(0, 40) : '<<UNDEFINED>>';
+    };
+    console.log(
+      `[REORDER] from=${from} to=${to} len=${cur.length}\n` +
+        `   item[from] = ${nameAt(from)}\n` +
+        `   item[to]   = ${nameAt(to)}`,
+    );
+    // ================================================================
+
+    const next = reorderItems(cur, from, to);
     dataRef.current = next;
     setData(next);
     setInfo(next);
