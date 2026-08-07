@@ -132,7 +132,14 @@ export default function HomeReorderable({}) {
 
   const isSearching = !!inputSearchLaw;
 
-  const keyExtractor = useCallback(item => Object.keys(item)[0], []);
+  // Phải phòng thủ: lúc thả, ReorderableListCore.markCells() gọi keyExtractor
+  // với data[i] từ một closure có thể đã cũ -> item = undefined. Thư viện có
+  // sẵn dự phòng `|| i.toString()` cho giá trị falsy, nhưng Object.keys(undefined)
+  // thì NÉM lỗi trước khi tới được dự phòng đó.
+  const keyExtractor = useCallback(
+    (item, index) => (item ? Object.keys(item)[0] : String(index)),
+    [],
+  );
 
   // Nhấn lần 2 vào bottom tab "Đã tải xuống" -> cuộn lên đầu.
   // ReorderableList forward ref về FlatList nên scrollToOffset dùng được
@@ -211,6 +218,8 @@ export default function HomeReorderable({}) {
       if (FileOrder) {
         return { order: JSON.parse(FileOrder) };
       }
+      // File có nhưng rỗng: bản gốc rơi vào đây và return undefined -> nổ ở .then
+      return { order: [] };
     } else {
       setShowBackground(true);
       return { order: {} };
@@ -250,13 +259,19 @@ export default function HomeReorderable({}) {
   }
 
   // Thư viện đã tự lo phần dựng lại thứ tự — chỉ cần áp reorderItems và ghi file.
+  // Giữ data mới nhất trong ref để không phải đặt tác dụng phụ (ghi file,
+  // setInfo) vào bên trong updater của setData — updater phải thuần khiết.
+  const dataRef = useRef(data);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
   const handleReorder = useCallback(({ from, to }) => {
-    setData(current => {
-      const next = reorderItems(current, from, to);
-      setInfo(next);
-      saveOrder(next);
-      return next;
-    });
+    const next = reorderItems(dataRef.current, from, to);
+    dataRef.current = next;
+    setData(next);
+    setInfo(next);
+    saveOrder(next);
   }, []);
 
   const renderDraggableItem = useCallback(
