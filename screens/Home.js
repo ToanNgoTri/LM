@@ -15,7 +15,6 @@ import {
   useContext,
   useCallback,
   useMemo,
-  memo,
 } from 'react';
 import {
   RefOfHome,
@@ -35,30 +34,10 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 const ITEM_HEIGHT = 110;
 const GAP = 8;
 
-// ==== PHÉP THỬ CẮT ĐÔI BÀI TOÁN ====
-// false -> danh sách chỉ để XEM: FlatList thuần (có virtualization), không
-//          gesture, không reanimated, không SortableItem. Cuộn native 100%.
-// true  -> như cũ: SortableLawList, render toàn bộ item, kéo-thả được.
-//
-// Nếu false mà MƯỢT  -> thủ phạm đúng là số lượng view + RNGH của cơ chế
-//                       kéo-thả => đi tiếp phương án A (tách 2 chế độ).
-// Nếu false vẫn GIẬT -> thủ phạm nằm ngoài danh sách (bản debug, ViewPager2
-//                       của material-top-tabs, hoặc phần khác) => A vô ích.
-const ENABLE_SORT = true;
-
-// ==== PHÉP THỬ: giới hạn số item đưa vào danh sách kéo-thả ====
-// Giả thuyết: fling chết vì TOÀN BỘ N item được mount (mỗi item ~8 native view),
-// bộ vẽ không theo kịp chứ không phải gesture bị huỷ.
-//   5    -> chỉ 5 item. Nếu LÚC NÀY VUỐT CÓ TRÔI => đúng giả thuyết, thủ phạm là
-//           số lượng view, và lời giải là phương án A (chỉ render Sortable khi
-//           vào chế độ sắp xếp).
-//   null -> không giới hạn (trạng thái thật).
-const TEST_LIMIT = null;
-
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
 /* ------------------------------------------------------------------ */
-const LawCard = memo(function LawCard({ item, onPress }) {
+function LawCard({ item, onPress }) {
   const law = Object.values(item)[0];
   const isHienPhap = law && law['lawNameDisplay'].match(/^(Hiến)/gim);
   const isHeader =
@@ -92,9 +71,7 @@ const LawCard = memo(function LawCard({ item, onPress }) {
       </View>
     </TouchableOpacity>
   );
-});
-
-const Separator = () => <View style={{ height: GAP }} />;
+}
 
 export default function Home({}) {
   const navigation = useNavigation();
@@ -124,11 +101,12 @@ export default function Home({}) {
 
   // Sortable đọc trực tiếp `item.id` để dựng map vị trí, nên phải gắn id thật.
   // Giữ nguyên shape gốc { "<lawKey>": {...} } và thêm id = lawKey.
-  const sortableData = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    const src = TEST_LIMIT == null ? data : data.slice(0, TEST_LIMIT);
-    return src.map(item => ({ ...item, id: Object.keys(item)[0] }));
-  }, [data]);
+  const sortableData = useMemo(
+    () =>
+      Array.isArray(data)
+        ? data.map(item => ({ ...item, id: Object.keys(item)[0] }))
+        : [],    [data],
+  );
 
   // ---- Đo chiều cao thật của từng card TRƯỚC khi đưa vào Sortable ----
   // Sortable (chế độ chiều cao động) định vị item theo `top` tuyệt đối và chỉ
@@ -166,24 +144,9 @@ export default function Home({}) {
 
   const keyExtractor = useCallback(item => item.id, []);
 
-  // Cho chế độ xem (FlatList thuần): data gốc chưa có `id`, dùng key gốc.
-  const plainKeyExtractor = useCallback(item => Object.keys(item)[0], []);
-  const renderPlainItem = useCallback(
-    ({ item }) => (
-      <LawCard
-        item={item}
-        onPress={() =>
-          navigation.navigate('accessLaw', { screen: Object.keys(item)[0] })
-        }
-      />
-    ),
-    [navigation],
-  );
-
   // Ref FlatList kết quả tìm kiếm & ref danh sách kéo-thả (SortableLawList).
   const searchListRef = useRef(null);
   const sortableRef = useRef(null);
-  const plainListRef = useRef(null);
 
   // Key để remount danh sách kéo-thả khi TẬP DỮ LIỆU đổi (thay cho cơ chế
   // key = dataHash của <Sortable> gốc): ghép chuỗi id theo đúng thứ tự. Kéo-thả
@@ -201,8 +164,6 @@ export default function Home({}) {
       scrollToOffset: opts => {
         if (searchListRef.current) {
           searchListRef.current.scrollToOffset(opts ?? { offset: 0 });
-        } else if (plainListRef.current) {
-          plainListRef.current.scrollToOffset({ offset: 0, animated: true });
         } else {
           sortableRef.current?.scrollToOffset({ offset: 0 });
         }
@@ -505,19 +466,6 @@ export default function Home({}) {
             ListFooterComponent={
               <View style={{ height: tabBarHeight, width: '100%' }} />
             }
-          />
-        </View>
-      ) : !ENABLE_SORT ? (
-        // CHẾ ĐỘ XEM: FlatList thuần. Không SortableItem, không GestureDetector,
-        // không worklet nào chạy theo mỗi khung hình cuộn.
-        <View style={{ flex: 1, marginBottom: tabBarHeight - GAP }}>
-          <FlatList
-            ref={plainListRef}
-            data={data}
-            keyExtractor={plainKeyExtractor}
-            renderItem={renderPlainItem}
-            ItemSeparatorComponent={Separator}
-            onScrollBeginDrag={() => Keyboard.dismiss()}
           />
         </View>
       ) : (
