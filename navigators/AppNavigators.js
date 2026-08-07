@@ -3,11 +3,10 @@ import { useDispatch } from 'react-redux';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useEffect, useContext, useRef, useState, useInsertionEffect } from 'react';
-// ==== THỬ NGHIỆM HIỆU NĂNG — bật đúng MỘT dòng. Revert = bật lại dòng đầu. ====
+// ==== THỬ NGHIỆM — bật đúng MỘT dòng. Revert = bật lại dòng đầu, xoá dòng sau. ====
 // import Home from '../screens/Home';            // bản gốc (reanimated-dnd)
-// import Home from '../screens/HomeReorderable'; // bản mới (reorderable-list)
-import Home from '../screens/PerfLab'; // màn ĐO: đủ 3 bản, bấm nút đổi tại chỗ
-// ============================================================================
+import Home from '../screens/HomeReorderable'; // bản mới (reorderable-list)
+// =================================================================================
 import { Detail1 } from '../screens/Detail1';
 import { Detail2 } from '../screens/Detail2';
 import { AIChatScreen } from '../screens/chatAI';
