@@ -51,6 +51,21 @@ const makeJobId = () =>
 // nguyên văn message 404 "unavailable...").
 const buildServerErrorText = ({ error, code }, { isPremium, usingTrial }) => {
   const raw = String(error || '');
+  // Dịch vụ phụ trợ (máy embed / DB) chết -> không liên quan gì tới gói cước,
+  // đừng mời nâng cấp. Server bản mới gửi kèm code này.
+  if (code === 'SERVICE_UNAVAILABLE') {
+    return raw || 'Hệ thống tra cứu tạm thời gián đoạn, vui lòng thử lại sau ít phút.';
+  }
+  // Lưới an toàn: lỗi kỹ thuật thô của JS/hạ tầng (server bản cũ gửi thẳng
+  // err.message, ví dụ "Unexpected token 'e' ... is not valid JSON") không bao
+  // giờ được hiện nguyên văn cho người dùng.
+  if (
+    /is not valid JSON|Unexpected token|SyntaxError|TypeError|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|fetch failed|undefined/i.test(
+      raw,
+    )
+  ) {
+    return 'Hệ thống tra cứu tạm thời gián đoạn, vui lòng thử lại sau ít phút.';
+  }
   const isRateLimit =
     code === 'RATE_LIMIT' ||
     /rate ?limit|unavailable|no endpoints|not found|quota|insufficient|credit|\b40[0234]\b|\b429\b|\b5\d{2}\b/i.test(

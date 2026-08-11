@@ -378,13 +378,49 @@ export const askLawAI = onRequest(
 
     try {
       // ── BƯỚC 1: Embed câu hỏi ────────────────────────────────────────
-      const embedRes = await fetch('https://ollama.pixelplaces.net/api/embed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'bge-m3', input: question }),
-      });
-      const embedData = await embedRes.json();
-      const questionVector = embedData.embeddings[0];
+      // Máy embed nằm sau Cloudflare Tunnel: khi máy chủ đó tắt, Cloudflare trả
+      // 5xx với body TEXT ("error code: 1033"). Vì vậy phải kiểm tra status và
+      // parse thủ công — gọi thẳng .json() sẽ ném SyntaxError kiểu
+      // "Unexpected token 'e' ... is not valid JSON" và lỗi kỹ thuật đó lọt
+      // nguyên văn ra bubble chat của người dùng.
+      let questionVector = null;
+      try {
+        const embedRes = await fetch('https://ollama.pixelplaces.net/api/embed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'bge-m3', input: question }),
+          signal: AbortSignal.timeout(20000),
+        });
+        const embedBody = await embedRes.text();
+        if (!embedRes.ok) {
+          throw new Error(
+            `embed HTTP ${embedRes.status}: ${embedBody.slice(0, 200)}`,
+          );
+        }
+        const embedData = JSON.parse(embedBody);
+        questionVector = embedData?.embeddings?.[0];
+      } catch (e) {
+        console.error('Embed service lỗi:', e?.message);
+        questionVector = null;
+      }
+      if (!Array.isArray(questionVector) || !questionVector.length) {
+        // Không embed được thì không thể tra cứu -> báo bằng lời người dùng hiểu
+        // được, kèm code để app tự chọn câu chữ phù hợp.
+        const payload = {
+          error:
+            'Hệ thống tra cứu tạm thời gián đoạn, vui lòng thử lại sau ít phút.',
+          code: 'SERVICE_UNAVAILABLE',
+          upgrade: false,
+        };
+        await saveJob({
+          status: 'error',
+          error: payload.error,
+          code: payload.code,
+        });
+        sse(payload);
+        sseDone();
+        return;
+      }
 
       // ── BƯỚC 2: Vector search + re-rank ───────────────────────────────
       // Lấy DƯ ứng viên (40) rồi re-rank theo THỨ TỰ ƯU TIÊN CỨNG:
@@ -650,14 +686,18 @@ ${context}`,
 
     } catch (err) {
       console.error('askLawAI error:', err);
+      // KHÔNG gửi err.message ra client: đó là chữ của JS (SyntaxError,
+      // TypeError...) và người dùng cuối không hiểu gì. Chi tiết đã có trong log.
+      const errorText =
+        'Hệ thống tra cứu tạm thời gián đoạn, vui lòng thử lại sau ít phút.';
       // Đã sinh được một phần trước khi lỗi -> vẫn coi là done để app lấy về
       // phần đó, thay vì mất trắng.
       await saveJob(
         answer
           ? { status: 'done', text: answer }
-          : { status: 'error', error: err.message, code: null },
+          : { status: 'error', error: errorText, code: 'SERVICE_UNAVAILABLE' },
       );
-      sse({ error: err.message });
+      sse({ error: errorText, code: 'SERVICE_UNAVAILABLE' });
       sseDone();
     }
   }
