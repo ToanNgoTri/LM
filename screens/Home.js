@@ -15,13 +15,14 @@ import {
   useContext,
   useCallback,
   useMemo,
+  memo,
 } from 'react';
 import {
   RefOfHome,
   // BoxInHomeScreen
 } from '../App';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import { Dirs, FileSystem } from 'react-native-file-access';
+import { ORDER_FILE, readUserJson, writeUserJson } from '../storage/userFiles';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SortableItem } from 'react-native-reanimated-dnd';
@@ -37,15 +38,22 @@ const GAP = 8;
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
 /* ------------------------------------------------------------------ */
-function LawCard({ item, onPress }) {
-  const law = Object.values(item)[0];
+const NOOP = () => {};
+
+// memo + onOpen ỔN ĐỊNH (thay cho onPress dạng arrow tạo mới ở mỗi lần render).
+// Danh sách kéo-thả render TẤT CẢ card cùng lúc, nên mỗi lần Home re-render
+// (gõ ô tìm kiếm, quay lại màn hình...) React phải dựng lại toàn bộ cây card
+// nếu prop đổi identity. Giữ prop ổn định -> re-render gần như bằng 0.
+const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
+  const lawKey = Object.keys(item)[0];
+  const law = item[lawKey];
   const isHienPhap = law && law['lawNameDisplay'].match(/^(Hiến)/gim);
   const isHeader =
     law && law['lawNameDisplay'].match(/^(luật|bộ luật|hiến)/gim);
 
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={() => onOpen(lawKey)}
       style={{
         minHeight: ITEM_HEIGHT,
         justifyContent: 'center',
@@ -71,7 +79,7 @@ function LawCard({ item, onPress }) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 export default function Home({}) {
   const navigation = useNavigation();
@@ -143,6 +151,18 @@ export default function Home({}) {
   );
 
   const keyExtractor = useCallback(item => item.id, []);
+
+  const openLaw = useCallback(
+    lawKey => navigation.navigate('accessLaw', { screen: lawKey }),
+    [navigation],
+  );
+
+  // renderItem của FlatList tìm kiếm: giữ identity ổn định để FlatList không
+  // phải render lại toàn bộ hàng mỗi lần Home re-render.
+  const renderSearchItem = useCallback(
+    ({ item }) => <LawCard item={item} onOpen={openLaw} />,
+    [openLaw],
+  );
 
   // Ref FlatList kết quả tìm kiếm & ref danh sách kéo-thả (SortableLawList).
   const searchListRef = useRef(null);
@@ -231,24 +251,13 @@ export default function Home({}) {
   }, [inputSearchLaw]);
 
   async function getContentExist() {
-    if (await FileSystem.exists(Dirs.CacheDir + '/order.txt', 'utf8')) {
+    const order = await readUserJson(ORDER_FILE, null);
+    if (order) {
       setShowBackground(false);
-
-      const FileOrder = await FileSystem.readFile(
-        Dirs.CacheDir + '/order.txt',
-        'utf8',
-      );
-      // console.log('FileOrder',FileOrder);
-
-      if (FileOrder) {
-        return {
-          order: JSON.parse(FileOrder),
-        };
-      }
-    } else {
-      setShowBackground(true);
-      return { order: {} };
+      return { order };
     }
+    setShowBackground(true);
+    return { order: {} };
   }
 
   useEffect(() => {
@@ -277,11 +286,7 @@ export default function Home({}) {
   }, []);
 
   async function sortedData(data) {
-    await FileSystem.writeFile(
-      Dirs.CacheDir + '/order.txt',
-      JSON.stringify(data),
-      'utf8',
-    );
+    await writeUserJson(ORDER_FILE, data);
 
     // console.log('new data',data );
   }
@@ -319,17 +324,12 @@ export default function Home({}) {
               - item CUỐI dư GAP phía dưới, nhưng được giấu sau tab bar nhờ
                 container nới marginBottom xuống GAP (xem bên dưới). */}
           <View style={{ paddingBottom: GAP }}>
-            <LawCard
-              item={item}
-              onPress={() =>
-                navigation.navigate('accessLaw', { screen: id })
-              }
-            />
+            <LawCard item={item} onOpen={openLaw} />
           </View>
         </SortableItem>
       );
     },
-    [navigation, handleDrop],
+    [openLaw, handleDrop],
   );
 
   function NoneOfResult() {
@@ -453,16 +453,7 @@ export default function Home({}) {
             keyboardShouldPersistTaps="handled"
             onScrollBeginDrag={() => Keyboard.dismiss()}
             ItemSeparatorComponent={() => <View style={{ height: GAP }} />}
-            renderItem={({ item }) => (
-              <LawCard
-                item={item}
-                onPress={() =>
-                  navigation.navigate('accessLaw', {
-                    screen: Object.keys(item)[0],
-                  })
-                }
-              />
-            )}
+            renderItem={renderSearchItem}
             ListFooterComponent={
               <View style={{ height: tabBarHeight, width: '100%' }} />
             }
@@ -499,7 +490,7 @@ export default function Home({}) {
                   }
                 >
                   <View style={{ paddingBottom: GAP }}>
-                    <LawCard item={item} onPress={() => {}} />
+                    <LawCard item={item} />
                   </View>
                 </View>
               ))}

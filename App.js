@@ -22,8 +22,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Dirs, FileSystem } from 'react-native-file-access';
 import VersionCheck from 'react-native-version-check';
+import {
+  APPEAR_FILE,
+  migrateUserFiles,
+  readUserJson,
+  userFileExists,
+  writeUserJson,
+} from './storage/userFiles';
 import { SubscriptionProvider } from './subscription/SubscriptionContext';
 import { syncSuggestCache } from './screens/suggestCache';
 const BoxInHomeScreen = createContext();
@@ -132,11 +138,7 @@ function App() {
   // const insets = useSafeAreaInsets();
 
   async function getPolicyAppear() {
-    if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
-      return false;
-    } else {
-      return true;
-    }
+    return !(await userFileExists(APPEAR_FILE));
   }
 
   function openStore() {
@@ -150,42 +152,20 @@ function App() {
   async function exitUpdate() {
     const latestVersion = latestVersionRef.current;
 
-    if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
-      const fileAppear = await FileSystem.readFile(
-        Dirs.CacheDir + '/Appear.txt',
-        'utf8',
-      );
-
-      let contentAppear = JSON.parse(fileAppear);
-
+    const contentAppear = await readUserJson(APPEAR_FILE, null);
+    if (contentAppear) {
       contentAppear[latestVersion] = false;
-
-      const addInfo = await FileSystem.writeFile(
-        Dirs.CacheDir + '/Appear.txt',
-        JSON.stringify(contentAppear),
-        'utf8',
-      );
+      await writeUserJson(APPEAR_FILE, contentAppear);
     }
   }
 
   async function acceptUpdate() {
     const latestVersion = latestVersionRef.current;
 
-    if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
-      const fileAppear = await FileSystem.readFile(
-        Dirs.CacheDir + '/Appear.txt',
-        'utf8',
-      );
-
-      let contentAppear = JSON.parse(fileAppear);
-
+    const contentAppear = await readUserJson(APPEAR_FILE, null);
+    if (contentAppear) {
       contentAppear[latestVersion] = true;
-
-      const addInfo = await FileSystem.writeFile(
-        Dirs.CacheDir + '/Appear.txt',
-        JSON.stringify(contentAppear),
-        'utf8',
-      );
+      await writeUserJson(APPEAR_FILE, contentAppear);
     }
   }
 
@@ -244,15 +224,8 @@ function App() {
 
       // shouldUpdate: nhắc mềm — vẫn tôn trọng lựa chọn "đã tắt" theo từng phiên bản.
       if (cfg?.shouldUpdate === true) {
-        let dismissed = false;
-        if (await FileSystem.exists(Dirs.CacheDir + '/Appear.txt', 'utf8')) {
-          const fileAppear = await FileSystem.readFile(
-            Dirs.CacheDir + '/Appear.txt',
-            'utf8',
-          );
-          const contentAppear = JSON.parse(fileAppear);
-          dismissed = !!contentAppear[latestVersion];
-        }
+        const contentAppear = await readUserJson(APPEAR_FILE, null);
+        const dismissed = !!(contentAppear && contentAppear[latestVersion]);
         if (!dismissed) SetUpdateStatus(true);
       }
     } catch (e) {
@@ -262,6 +235,10 @@ function App() {
   };
 
   useEffect(() => {
+    // Chuyển dữ liệu người dùng từ CacheDir (bị HĐH xoá định kỳ) sang
+    // DocumentDir. Mọi hàm đọc/ghi trong storage/userFiles đều chờ bước này.
+    migrateUserFiles();
+
     getPolicyAppear().then(status => setShowPolicy(status));
 
     checkForUpdate();
@@ -540,11 +517,9 @@ function App() {
                           const currentVersion =
                             VersionCheck.getCurrentVersion();
 
-                          const addContent = await FileSystem.writeFile(
-                            Dirs.CacheDir + '/Appear.txt',
-                            JSON.stringify({ [currentVersion]: false }),
-                            'utf8',
-                          );
+                          await writeUserJson(APPEAR_FILE, {
+                            [currentVersion]: false,
+                          });
 
                           Animated.timing(animated, {
                             toValue: showPolicy || updateStatus ? 100 : 0,

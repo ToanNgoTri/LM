@@ -18,7 +18,6 @@ import {
   Vibration,
   Platform,
 } from 'react-native';
-import { Dirs, FileSystem } from 'react-native-file-access';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -30,6 +29,13 @@ import { useSelector, useDispatch } from 'react-redux';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { loadSuggestMap } from './suggestCache';
+import {
+  BOOKMARKS_FILE,
+  DOWNLOADED_FILE,
+  ORDER_FILE,
+  readUserJson,
+  writeUserJson,
+} from '../storage/userFiles';
 let TopUnitCount; // là đơn vị lớn nhất vd là 'phần thứ' hoặc chươn
 
 let sumChapterArray = []; // array mà mỗi phần tử là 'phần thứ...' có tổng bn chương
@@ -43,38 +49,18 @@ let eachSectionWithChapter = [];
 /* Đọc/ghi danh sách Điều đã ghi nhớ theo <screen> (dùng chung)        */
 /* ------------------------------------------------------------------ */
 async function loadBookmarksFile(screen) {
-  if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
-    const file = await FileSystem.readFile(
-      Dirs.CacheDir + '/bookmarks.txt',
-      'utf8',
-    );
-    if (file) {
-      const all = JSON.parse(file);
-      return all[screen] || [];
-    }
-  }
-  return [];
+  const all = (await readUserJson(BOOKMARKS_FILE, {})) || {};
+  return all[screen] || [];
 }
 
 async function saveBookmarksFile(screen, listBookmark) {
-  let all = {};
-  if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
-    const file = await FileSystem.readFile(
-      Dirs.CacheDir + '/bookmarks.txt',
-      'utf8',
-    );
-    if (file) all = JSON.parse(file);
-  }
+  const all = (await readUserJson(BOOKMARKS_FILE, {})) || {};
   if (listBookmark.length === 0) {
     delete all[screen];
   } else {
     all[screen] = listBookmark;
   }
-  await FileSystem.writeFile(
-    Dirs.CacheDir + '/bookmarks.txt',
-    JSON.stringify(all),
-    'utf8',
-  );
+  await writeUserJson(BOOKMARKS_FILE, all);
 }
 
 /* ------------------------------------------------------------------ */
@@ -306,107 +292,42 @@ export function Detail5() {
   let internetConnected = netInfo.isConnected;
 
   async function StoreInternal() {
-    async function k() {
-      if (await FileSystem.exists(Dirs.CacheDir + '/downloaded.txt', 'utf8')) {
-        const FileInfoString = await FileSystem.readFile(
-          Dirs.CacheDir + '/downloaded.txt',
-          'utf8',
-        );
-        return JSON.parse(FileInfoString);
-      }
-    }
+    // Đọc kèm giá trị mặc định: nếu một trong hai file bị mất hoặc hỏng thì
+    // dựng lại từ đầu thay vì ném lỗi (trước đây order.txt được đọc thẳng,
+    // không kiểm tra tồn tại -> mất file là hỏng cả thao tác tải).
+    const contentObject = (await readUserJson(DOWNLOADED_FILE, {})) || {};
+    const orderRaw = await readUserJson(ORDER_FILE, []);
+    const orderArray = Array.isArray(orderRaw) ? orderRaw : [];
 
-    let m = await k();
-    if (m) {
-      const FileDownloaded = await FileSystem.readFile(
-        Dirs.CacheDir + '/downloaded.txt',
-        'utf8',
-      );
-      let contentObject = JSON.parse(FileDownloaded);
-      contentObject[route.params.screen] = { Content: Content, Info: Info };
-      // contentObject[route.params.screen] = {'Info':Info};
+    contentObject[route.params.screen] = { Content: Content, Info: Info };
 
-      const addContent = await FileSystem.writeFile(
-        Dirs.CacheDir + '/downloaded.txt',
-        JSON.stringify(contentObject),
-        'utf8',
-      );
+    // Không thêm trùng: order.txt có thể còn mục cũ khi downloaded.txt hỏng.
+    const already = orderArray.some(
+      item => Object.keys(item)[0] === route.params.screen,
+    );
+    if (!already) orderArray.push({ [route.params.screen]: Info });
 
-      const FileOrder = await FileSystem.readFile(
-        Dirs.CacheDir + '/order.txt',
-        'utf8',
-      );
-
-      let orderArray = JSON.parse(FileOrder);
-      orderArray[orderArray.length] = { [route.params.screen]: Info };
-      console.log(orderArray, 'orderArray');
-
-      const addOrder = await FileSystem.writeFile(
-        Dirs.CacheDir + '/order.txt',
-        JSON.stringify(orderArray),
-        'utf8',
-      );
-    } else {
-      const addContent = await FileSystem.writeFile(
-        Dirs.CacheDir + '/downloaded.txt',
-        JSON.stringify({
-          [route.params.screen]: { Content: Content, Info: Info },
-        }),
-        'utf8',
-      );
-
-      const addInfo = await FileSystem.writeFile(
-        Dirs.CacheDir + '/order.txt',
-        JSON.stringify([{ [route.params.screen]: Info }]),
-        'utf8',
-      );
-    }
+    await writeUserJson(DOWNLOADED_FILE, contentObject);
+    await writeUserJson(ORDER_FILE, orderArray);
   }
 
   async function DeleteInternal() {
-    const FileInfoStringContent = await FileSystem.readFile(
-      Dirs.CacheDir + '/downloaded.txt',
-      'utf8',
-    );
-    let contentObject = JSON.parse(FileInfoStringContent);
+    const contentObject = (await readUserJson(DOWNLOADED_FILE, {})) || {};
     delete contentObject[route.params.screen];
+    await writeUserJson(DOWNLOADED_FILE, contentObject);
 
-    const addContent = await FileSystem.writeFile(
-      Dirs.CacheDir + '/downloaded.txt',
-      JSON.stringify(contentObject),
-      'utf8',
-    );
-
-    const FileOrder = await FileSystem.readFile(
-      Dirs.CacheDir + '/order.txt',
-      'utf8',
-    );
-    let orderArray = JSON.parse(FileOrder);
-    const NewOrderArray = orderArray.filter(
-      item => Object.keys(item)[0] !== route.params.screen,
-    );
-
-    const addInfo = await FileSystem.writeFile(
-      Dirs.CacheDir + '/order.txt',
-      JSON.stringify(NewOrderArray),
-      'utf8',
+    const orderRaw = await readUserJson(ORDER_FILE, []);
+    const orderArray = Array.isArray(orderRaw) ? orderRaw : [];
+    await writeUserJson(
+      ORDER_FILE,
+      orderArray.filter(item => Object.keys(item)[0] !== route.params.screen),
     );
 
     // dọn luôn danh sách ghi nhớ của luật này
-    if (await FileSystem.exists(Dirs.CacheDir + '/bookmarks.txt', 'utf8')) {
-      const FileBookmarks = await FileSystem.readFile(
-        Dirs.CacheDir + '/bookmarks.txt',
-        'utf8',
-      );
-      if (FileBookmarks) {
-        let allBookmarks = JSON.parse(FileBookmarks);
-        delete allBookmarks[route.params.screen];
-        await FileSystem.writeFile(
-          Dirs.CacheDir + '/bookmarks.txt',
-          JSON.stringify(allBookmarks),
-          'utf8',
-        );
-      }
+    const allBookmarks = await readUserJson(BOOKMARKS_FILE, null);
+    if (allBookmarks) {
+      delete allBookmarks[route.params.screen];
+      await writeUserJson(BOOKMARKS_FILE, allBookmarks);
     }
   }
 
@@ -526,24 +447,8 @@ export function Detail5() {
   }, [exists]);
 
   async function getContentExist() {
-    if (await FileSystem.exists(Dirs.CacheDir + '/downloaded.txt', 'utf8')) {
-      const FileDownloaded = await FileSystem.readFile(
-        Dirs.CacheDir + '/downloaded.txt',
-        'utf8',
-      );
-      // const FileInfoStringInfo = await FileSystem.readFile(
-      //   Dirs.CacheDir + '/Info.txt',
-      //   'utf8',
-      // );
-      if (FileDownloaded) {
-        return {
-          // _id: route.params.screen,
-          all: JSON.parse(FileDownloaded),
-          // info: JSON.parse(FileDownloaded.Info),
-        };
-        // f = JSON.parse(FileInfoStringInfo)
-      }
-    }
+    const all = await readUserJson(DOWNLOADED_FILE, null);
+    if (all) return { all };
   }
 
   useEffect(() => {

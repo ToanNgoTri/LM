@@ -1,20 +1,27 @@
 import React, { forwardRef, memo, useImperativeHandle } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { scrollTo, runOnUI } from 'react-native-reanimated';
-import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
-import {
-  DropProvider,
-  SortableDirection,
-  useSortableList,
-} from 'react-native-reanimated-dnd';
+import { ScrollView } from 'react-native-gesture-handler';
+import { DropProvider, SortableDirection } from 'react-native-reanimated-dnd';
+import { useSortableListSmooth } from './useSortableListSmooth';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
-// Bản sao của <Sortable> gốc (chiều dọc, useFlatList=false) — render y hệt
-// (cùng dùng useSortableList) và ĐƯỢC BỌC memo giống bản gốc để hiệu năng cuộn
-// tay tương đương. Khác biệt duy nhất: expose ref có scrollToOffset dùng
-// Reanimated scrollTo(animated=true) -> cuộn LÊN ĐẦU MƯỢT (bản gốc giấu
-// scrollViewRef nên chỉ có thể remount = nhảy).
+// Bản thay thế cho <Sortable> (chiều dọc, useFlatList=false) của
+// react-native-reanimated-dnd. Ba khác biệt, tất cả đều nhằm cuộn mượt:
+//
+// 1. Dùng useSortableListSmooth thay useSortableList: không còn gọi scrollTo()
+//    ở mỗi frame cuộn tay (xem giải thích trong useSortableListSmooth.js).
+// 2. KHÔNG bọc GestureHandlerRootView nữa. App.js đã bọc ở root; lồng thêm một
+//    root nữa tách các gesture handler bên trong sang một "root" riêng, khiến
+//    ScrollView (NativeViewGestureHandler) và Pan của từng card phải phối hợp
+//    chéo root -> chạm/vuốt phản hồi chậm hơn.
+// 3. Bỏ simultaneousHandlers={dropProviderRef}: dropProviderRef KHÔNG phải ref
+//    của gesture handler (nó chỉ có requestPositionUpdate/getDroppedItems), nên
+//    prop này vô nghĩa — bản gốc truyền nhầm.
+//
+// Vẫn expose ref.scrollToOffset dùng Reanimated scrollTo(animated=true) để
+// nhấn lần 2 vào tab "Đã tải xuống" cuộn lên đầu MƯỢT.
 export const SortableLawList = memo(
   forwardRef(function SortableLawList(
     {
@@ -22,9 +29,7 @@ export const SortableLawList = memo(
       renderItem,
       itemHeight,
       estimatedItemHeight = 60,
-      itemKeyExtractor = item => item.id,
-      enableDynamicHeights = false,
-      onHeightsMeasured,
+      itemKeyExtractor,
       style,
       contentContainerStyle,
     },
@@ -37,12 +42,10 @@ export const SortableLawList = memo(
       handleScrollEnd,
       contentHeight,
       getItemProps,
-    } = useSortableList({
+    } = useSortableListSmooth({
       data,
       itemHeight,
-      enableDynamicHeights,
       estimatedItemHeight,
-      onHeightsMeasured,
       itemKeyExtractor,
     });
 
@@ -61,38 +64,34 @@ export const SortableLawList = memo(
     );
 
     return (
-      <GestureHandlerRootView style={styles.flex}>
-        <DropProvider ref={dropProviderRef}>
-          <AnimatedScrollView
-            ref={scrollViewRef}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            style={[styles.scrollView, style]}
-            contentContainerStyle={[
-              { height: contentHeight },
-              contentContainerStyle,
-            ]}
-            onScrollEndDrag={handleScrollEnd}
-            onMomentumScrollEnd={handleScrollEnd}
-            simultaneousHandlers={dropProviderRef}
-          >
-            {data.map((item, index) => {
-              const itemProps = getItemProps(item, index);
-              return renderItem({
-                item,
-                index,
-                direction: SortableDirection.Vertical,
-                ...itemProps,
-              });
-            })}
-          </AnimatedScrollView>
-        </DropProvider>
-      </GestureHandlerRootView>
+      <DropProvider ref={dropProviderRef}>
+        <AnimatedScrollView
+          ref={scrollViewRef}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          style={[styles.scrollView, style]}
+          contentContainerStyle={[
+            { height: contentHeight },
+            contentContainerStyle,
+          ]}
+          onScrollEndDrag={handleScrollEnd}
+          onMomentumScrollEnd={handleScrollEnd}
+        >
+          {data.map((item, index) => {
+            const itemProps = getItemProps(item, index);
+            return renderItem({
+              item,
+              index,
+              direction: SortableDirection.Vertical,
+              ...itemProps,
+            });
+          })}
+        </AnimatedScrollView>
+      </DropProvider>
     );
   }),
 );
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   scrollView: { flex: 1, position: 'relative', backgroundColor: 'white' },
 });

@@ -22,6 +22,11 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import CheckBox from 'react-native-check-box';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Dirs, FileSystem } from 'react-native-file-access';
+import {
+  LASTED_LAW_FILE,
+  readUserJson,
+  writeUserJson,
+} from '../storage/userFiles';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
 import { setFilterUI } from '../redux/fetchData';
@@ -228,14 +233,10 @@ export function Detail2({}) {
   }
 
   async function storeLastedLaw() {
-    const addContent = await FileSystem.writeFile(
-      Dirs.CacheDir + '/lastedLaw.txt',
-      JSON.stringify({
-        currentCountLaw: result4,
-        lastedLaw: convertResult(info3.slice(0, 50)),
-      }),
-      'utf8',
-    );
+    await writeUserJson(LASTED_LAW_FILE, {
+      currentCountLaw: result4,
+      lastedLaw: convertResult(info3.slice(0, 50)),
+    });
   }
   useEffect(() => {
     if (info3.length) {
@@ -368,24 +369,13 @@ export function Detail2({}) {
     // Đang có kết quả tìm kiếm thì không tải danh sách 50 mặc định
     if (info5Ref.current) return;
 
-    if (await FileSystem.exists(Dirs.CacheDir + '/lastedLaw.txt', 'utf8')) {
-      const FileInfoStringContent = await FileSystem.readFile(
-        Dirs.CacheDir + '/lastedLaw.txt',
-        'utf8',
-      );
+    const contentLastedLaw = await readUserJson(LASTED_LAW_FILE, null);
 
-      let contentLastedLaw = JSON.parse(FileInfoStringContent);
+    if (info5Ref.current) return;
 
-      if (info5Ref.current) return;
-
-      if (contentLastedLaw['currentCountLaw'] == result4) {
-        // console.log(1);
-
-        setSearchResult(contentLastedLaw['lastedLaw']);
-        setLawFilted(contentLastedLaw['lastedLaw']);
-      } else {
-        dispatch({ type: 'getlastedlaws' });
-      }
+    if (contentLastedLaw && contentLastedLaw['currentCountLaw'] == result4) {
+      setSearchResult(contentLastedLaw['lastedLaw']);
+      setLawFilted(contentLastedLaw['lastedLaw']);
     } else {
       dispatch({ type: 'getlastedlaws' });
     }
@@ -416,18 +406,7 @@ export function Detail2({}) {
   const renderDots = '.'.repeat(dotCount);
 
   async function getContentExist() {
-    if (await FileSystem.exists(Dirs.CacheDir + '/lastedLaw.txt', 'utf8')) {
-      const FileOrder = await FileSystem.readFile(
-        Dirs.CacheDir + '/lastedLaw.txt',
-        'utf8',
-      );
-
-      if (FileOrder) {
-        return JSON.parse(FileOrder);
-      }
-    } else {
-      return JSON.parse('{"lastedLaw": null}');
-    }
+    return (await readUserJson(LASTED_LAW_FILE, null)) || { lastedLaw: null };
   }
 
   useEffect(() => {
