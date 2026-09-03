@@ -353,15 +353,27 @@ export const askLawAI = onRequest(
     // Lưu ý: slug ':free' có thể bị OpenRouter khai tử bất cứ lúc nào (trả 404
     // kèm gợi ý dùng bản trả phí) -> đã bỏ 'qwen/qwen3-next-80b-a3b-instruct:free'.
     const FREE_MODELS = [
-      'google/gemma-4-31b-it:free',
-      'google/gemma-4-26b-a4b-it:free',
-      'poolside/laguna-xs-2.1:free',
-      'openai/gpt-oss-20b:free',
-      'cohere/north-mini-code:free',
-      'inclusionai/ling-3.0-flash:free',
-      'qwen/qwen3-coder:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'meta-llama/llama-3.2-3b-instruct:free',
+      // 'google/gemma-4-31b-it:free',
+      // 'google/gemma-4-26b-a4b-it:free',
+      // 'poolside/laguna-xs-2.1:free',
+      // 'cohere/north-mini-code:free',
+      // 'inclusionai/ling-3.0-flash:free',
+      // "minimax/minimax-m3:free",
+      // "nvidia/nemotron-3-ultra-550b-a55b:free",
+      // "nvidia/nemotron-3.5-lightning:free",
+      // "inclusionai/ling-3.0-flash-fin:free",
+      // "minimax/minimax-m2.7:free",
+      // "nvidia/nemotron-3-super-120b-a12b:free",
+      // "thinkingmachines/inkling:free",
+      // "dots-studio/dots-3-note-preview:free",
+      // "poolside/laguna-xs-2.1:free",
+      // "cohere/north-mini-code:free",
+      // "thinkingmachines/inkling-small:free",
+      // "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      // "z-ai/glm-5.2:free",
+      // "liquid/lfm-2.5-2.6b:free",
+      // "nvidia/nemotron-3.5-content-safety:free",
+      "openrouter/free"
     ];
 
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,

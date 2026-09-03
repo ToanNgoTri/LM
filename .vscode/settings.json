@@ -1,0 +1,40 @@
+{
+  // File watcher cua VS Code KHONG doc .gitignore -> phai loai tru rieng.
+  // Khong co phan nay thi VS Code theo doi ca node_modules va thu muc build
+  // cua Android (vai tram nghin file) -> CPU cao, Git extension refresh lien tuc.
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/android/build/**": true,
+    "**/android/app/build/**": true,
+    "**/android/.gradle/**": true,
+    "**/android/.cxx/**": true,
+    "**/android/app/.cxx/**": true,
+    "**/ios/Pods/**": true,
+    "**/ios/build/**": true,
+    "**/ios/DerivedData/**": true,
+    "**/.firebase/**": true,
+    "**/.bundle/**": true,
+    "**/vendor/bundle/**": true
+  },
+
+  // Ctrl+Shift+F khong quet nhung thu muc nay nua.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/android/build": true,
+    "**/android/app/build": true,
+    "**/android/.gradle": true,
+    "**/ios/Pods": true,
+    "**/ios/build": true,
+    "**/.firebase": true,
+    "**/package-lock.json": true
+  },
+  "search.followSymlinks": false,
+
+  // node_modules co rat nhieu symlink/junction; theo chung lam cham moi thu.
+  "typescript.tsserver.watchOptions": {
+    "watchDirectory": "useFsEventsOnParentDirectory",
+    "fallbackPolling": "dynamicPriority"
+  }
+}
