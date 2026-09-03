@@ -379,8 +379,8 @@ export const askLawAI = onRequest(
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
     // sau đó mới fallback sang model free để không bao giờ trả lỗi trắng.
     const PAID_MODELS = [
-      'qwen/qwen3-next-80b-a3b-instruct',
-      'qwen/qwen-2.5-7b-instruct',
+      'inclusionai/ling-3.0-flash',
+      'qwen/qwen3.7-flash',
     ];
 
     const PREMIUM_MODELS = [...PAID_MODELS, ...FREE_MODELS];
