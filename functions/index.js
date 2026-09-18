@@ -356,7 +356,6 @@ export const askLawAI = onRequest(
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
       'poolside/laguna-xs-2.1:free',
-      'cohere/north-mini-code:free',
       'inclusionai/ling-3.0-flash:free',
       "minimax/minimax-m3:free",
       "nvidia/nemotron-3-ultra-550b-a55b:free",
