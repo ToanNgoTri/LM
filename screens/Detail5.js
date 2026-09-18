@@ -28,6 +28,10 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  FUNCTION_TAB_CONTENT_HEIGHT,
+  useBottomBarInset,
+} from '../hooks/useTabBarHeight';
 import { loadSuggestMap } from './suggestCache';
 import {
   BOOKMARKS_FILE,
@@ -79,6 +83,8 @@ function SidePanel({
   onClose, // đóng panel (có animation)
   onSelect, // (yArray) => cuộn tới vị trí
 }) {
+  // Chiều cao thanh chức năng để panel dừng đúng phía trên nó.
+  const functionTabHeight = FUNCTION_TAB_CONTENT_HEIGHT + useBottomBarInset();
   const [inputSearchArtical, setInputSearchArtical] = useState('');
   const [bookmarks, setBookmarks] = useState([]);
   const bookmarksRef = useRef([]);
@@ -135,8 +141,8 @@ function SidePanel({
         <TouchableOpacity
           onPress={() => toggleBookmark(title)}
           style={{
-            paddingLeft: 8,
-            paddingRight: 4,
+            paddingLeft: 10,
+            paddingRight: 10,
             justifyContent: 'center',
             alignItems: 'center',
           }}
@@ -182,8 +188,7 @@ function SidePanel({
           ...styles.listArticle,
           width: (widthDevice / 100) * 60,
           transform: [{ translateX: transX }],
-          marginBottom:
-            Platform.OS === 'ios' ? 15 + insets.bottom : 35 + insets.bottom,
+          marginBottom: functionTabHeight,
           marginTop: insets.top + 50,
         }}
       >
@@ -334,6 +339,12 @@ export function Detail5() {
   const animatedForNavi = useRef(new Animated.Value(0)).current;
 
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
+
+  // Phần safe-area thanh chức năng cần chừa + chiều cao thật của nó.
+
+  const bottomInset = useBottomBarInset();
+
+  const functionTabHeight = FUNCTION_TAB_CONTENT_HEIGHT + bottomInset;
 
   const list = useRef(null);
   const textInputFind = useRef(null);
@@ -784,7 +795,9 @@ export function Detail5() {
     outputRange: [
       0,
       0,
-      Platform.OS === 'ios' ? -25 - insets.bottom : -45 - insets.bottom,
+      // findArea có bottom:-11 -> đẩy lên chừng này để mép dưới nằm sát
+      // ĐỈNH thanh chức năng, bám theo chiều cao mới của thanh.
+      -(functionTabHeight + 11),
       0,
       0,
     ],
@@ -1407,7 +1420,7 @@ export function Detail5() {
                         </View>
                       );
                     })}
-                  <View style={{ height: 40 + insets.bottom / 2 }}></View>
+                  <View style={{ height: functionTabHeight }}></View>
                 </ScrollView>
               </Animated.View>
             </>
@@ -1449,10 +1462,11 @@ export function Detail5() {
           <View
             style={{
               ...styles.functionTab,
-              paddingBottom:
-                Platform.OS === 'ios' ? insets.bottom / 2 : 3 + insets.bottom,
-              height:
-                Platform.OS === 'ios' ? 15 + insets.bottom : 35 + insets.bottom,
+              // height - paddingBottom = FUNCTION_TAB_CONTENT_HEIGHT (44dp),
+              // vừa đủ cho styles.tab (40dp) -> hàng nút căn giữa thật sự,
+              // không còn tràn lên trên như công thức insets cũ.
+              paddingBottom: bottomInset,
+              height: functionTabHeight,
               bottom: 0,
             }}
           >
@@ -2337,7 +2351,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     bottom: 0,
     backgroundColor: 'white', // #00CD66
-    paddingTop: 3,
+    paddingTop: 0,
     zIndex: 10,
     borderTopWidth: 2,
     borderTopColor: 'black',

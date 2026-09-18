@@ -11,7 +11,6 @@ import {
   FlatList,
   Easing,
   TouchableWithoutFeedback,
-  Platform,
 } from 'react-native';
 import CheckBox from 'react-native-check-box';
 import Ionicons from '@react-native-vector-icons/ionicons';
@@ -244,7 +243,8 @@ export function Detail1({}) {
             height: '100%',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingBottom: 90,
+            // Căn giữa theo phần màn hình KHÔNG bị tab bar che
+            paddingBottom: tabBarHeight,
             paddingLeft: 30,
             paddingRight: 30,
           }}
@@ -628,10 +628,8 @@ export function Detail1({}) {
           marginTop: 0,
           flex: 1,
           backgroundColor: '#EEEFE4',
-          paddingBottom:
-            Platform.OS === 'ios'
-              ? 0
-              : insets.bottom / 2 - 50 - 5 + insets.bottom,
+          // Không cần chừa chỗ ở đây: FlatList đã có ListFooterComponent
+          // cao tabBarHeight, còn các nhánh khác tự chừa riêng.
         }}
       >
         {loading1 && (

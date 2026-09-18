@@ -470,7 +470,8 @@ export function Detail2({}) {
             height: '100%',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingBottom: 90,
+            // Căn giữa theo phần màn hình KHÔNG bị tab bar che
+            paddingBottom: tabBarHeight,
             paddingLeft: 30,
             paddingRight: 30,
           }}
@@ -794,6 +795,7 @@ export function Detail2({}) {
                 opacity: loading ? 0.5 : 1,
               }}
               onPress={() => {
+                hideSuggest()
                 setShowFilter(true);
                 Keyboard.dismiss();
                 Animated.timing(animated, {

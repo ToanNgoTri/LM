@@ -340,7 +340,8 @@ export default function Home({}) {
       >
         <View
           style={{
-            paddingBottom: 100,
+            // Căn giữa theo phần màn hình KHÔNG bị tab bar che
+            paddingBottom: tabBarHeight,
             height: '100%',
             alignItems: 'center',
             justifyContent: 'center',
