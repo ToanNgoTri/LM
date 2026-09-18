@@ -38,6 +38,8 @@ const RESUME_POLL_MS = 1500;
 const RESUME_MAX_POLLS = 60;
 // Sau khi user mở lại app, chờ bấy nhiêu ms rồi mới kiểm tra stream còn sống?
 const ZOMBIE_CHECK_MS = 3000;
+// Cứ bấy nhiêu ký tự stream ra thì rung một nhịp — rung thưa cho đỡ rối tay.
+const VIBRATE_EVERY_CHARS = 8;
 
 // jobId: server dùng làm _id của job -> phải khớp /^[A-Za-z0-9_-]{8,64}$/.
 const makeJobId = () =>
@@ -55,6 +57,14 @@ const buildServerErrorText = ({ error, code }, { isPremium, usingTrial }) => {
   // đừng mời nâng cấp. Server bản mới gửi kèm code này.
   if (code === 'SERVICE_UNAVAILABLE') {
     return raw || 'Hệ thống tra cứu tạm thời gián đoạn, vui lòng thử lại sau ít phút.';
+  }
+  // Model nhận request nhưng không sinh ra chữ nào (:free hết lượt / tạm ngừng).
+  // KHÔNG dùng lời "đã dùng hết lượt" của nhánh RATE_LIMIT vì ở đây lượt chưa
+  // hề bị trừ — model có trả lời, chỉ là trả về rỗng.
+  if (code === 'MODEL_BUSY') {
+    return isPremium
+      ? 'Máy chủ AI đang bận, vui lòng thử lại sau ít phút.'
+      : 'Máy chủ AI đang bận. Vui lòng nâng cấp để sử dụng đầy đủ tính năng.';
   }
   // Lưới an toàn: lỗi kỹ thuật thô của JS/hạ tầng (server bản cũ gửi thẳng
   // err.message, ví dụ "Unexpected token 'e' ... is not valid JSON") không bao
@@ -409,7 +419,7 @@ export const AIChatScreen = () => {
 
   const charCountRef = useRef(0);
 
-  // Xử lý từng ký tự từ queue với setTimeout — rung theo từng char
+  // Xử lý từng ký tự từ queue với setTimeout — rung thưa theo cụm ký tự
 const scheduleNextChar = useCallback(() => {
   if (charQueueRef.current.length === 0) {
     charTimerRef.current = null;
@@ -419,8 +429,13 @@ const scheduleNextChar = useCallback(() => {
   const char = charQueueRef.current.shift();
   const id = assistantIdRef.current;
 
-  // Chỉ rung khi đang ở màn hình Chat AI.
-  if (isFocusedRef.current) Vibration.vibrate(6);
+  charCountRef.current = (charCountRef.current || 0) + 1;
+
+  // Chỉ rung khi đang ở màn hình Chat AI, và rung thưa (mỗi VIBRATE_EVERY_CHARS
+  // ký tự) để tránh cảm giác rung liên tục khi stream.
+  if (isFocusedRef.current && charCountRef.current % VIBRATE_EVERY_CHARS === 0) {
+    Vibration.vibrate(6);
+  }
 
   setMessages(prev =>
     prev.map(msg =>
@@ -430,7 +445,6 @@ const scheduleNextChar = useCallback(() => {
 
   // Auto-scroll mỗi 5 ký tự để không gọi quá nhiều — nhưng tôn trọng cử chỉ
   // của user: nếu user đã cuộn lên trên thì không kéo xuống đáy nữa.
-  charCountRef.current = (charCountRef.current || 0) + 1;
   if (autoScrollRef.current && charCountRef.current % 5 === 0) {
     flatListRef.current?.scrollToEnd({ animated: false });
   }

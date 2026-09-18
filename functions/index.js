@@ -652,6 +652,25 @@ ${context}`,
       console.log(`Dùng model: ${usedModel}`);
 
       // ── BƯỚC 4: Stream response về client ────────────────────────────
+      // Model có thể nhận request (HTTP 200) nhưng không sinh ra chữ nào:
+      // slug :free hết lượt, model tạm ngừng, hoặc trả lỗi NGAY TRONG stream.
+      // Khi đó phải báo cho người dùng, không được kết thúc im lặng khiến
+      // khung chat chỉ hiện "..." rồi tắt.
+      const finishStream = async () => {
+        if (answer.trim()) {
+          await saveJob({ status: 'done', text: answer });
+          sseDone();
+          return;
+        }
+        const msg = isPremium
+          ? 'Máy chủ AI đang bận, vui lòng thử lại sau ít phút.'
+          : 'Máy chủ AI đang bận. Vui lòng nâng cấp để sử dụng đầy đủ tính năng.';
+        console.warn(`Model ${usedModel} không sinh ra chữ nào -> báo bận`);
+        await saveJob({ status: 'error', error: msg, code: 'MODEL_BUSY' });
+        sse({ error: msg, code: 'MODEL_BUSY', upgrade: !isPremium });
+        sseDone();
+      };
+
       const reader = llmRes.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -660,7 +679,10 @@ ${context}`,
       let lastProgressSave = 0;
       const PROGRESS_SAVE_MS = 2000;
 
-      while (true) {
+      // Lỗi giữa stream -> thoát cả hai vòng lặp rồi để finishStream báo ra.
+      let streamFailed = false;
+
+      while (!streamFailed) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -670,15 +692,30 @@ ${context}`,
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
+          // trim: mot so nha cung cap gui CRLF nen chuoi [DONE] kem CR se khong khop.
+          const data = line.slice(6).trim();
+          if (!data) continue;
           if (data === '[DONE]') {
-            await saveJob({ status: 'done', text: answer });
-            sseDone();
+            await finishStream();
             return;
           }
           try {
             const json = JSON.parse(data);
-            const text = json.choices?.[0]?.delta?.content;
+            // OpenRouter trả lỗi ngay trong stream với HTTP 200 (model :free
+            // hết lượt / bị gỡ). Trước đây chunk này bị bỏ qua -> im lặng.
+            if (json.error) {
+              console.warn(
+                `Model ${usedModel} lỗi trong stream:`,
+                JSON.stringify(json.error),
+              );
+              streamFailed = true;
+              break;
+            }
+            // Mỗi model để chữ ở một chỗ khác nhau: model chat thường dùng
+            // delta.content, một số model trả nguyên message.content hoặc text.
+            const choice = json.choices?.[0];
+            const text =
+              choice?.delta?.content ?? choice?.message?.content ?? choice?.text;
             if (text) {
               answer += text;
               sse({ text });
@@ -692,8 +729,7 @@ ${context}`,
         }
       }
 
-      await saveJob({ status: 'done', text: answer });
-      sseDone();
+      await finishStream();
 
     } catch (err) {
       console.error('askLawAI error:', err);
