@@ -141,7 +141,7 @@ function SidePanel({
         <TouchableOpacity
           onPress={() => toggleBookmark(title)}
           style={{
-            paddingLeft: 10,
+            paddingLeft: 4,
             paddingRight: 10,
             justifyContent: 'center',
             alignItems: 'center',
