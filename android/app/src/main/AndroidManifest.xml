@@ -2,8 +2,21 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Đọc câu hỏi bằng giọng nói ở màn hình Chat AI -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Thanh toán trong ứng dụng (Google Play Billing) cho tính năng Premium -->
     <uses-permission android:name="com.android.vending.BILLING" />
+
+    <!--
+      Android 11+ lọc gói theo tầm nhìn: không khai báo phần này thì
+      SpeechRecognizer.isRecognitionAvailable() luôn trả về false vì app không
+      "nhìn thấy" ứng dụng cung cấp dịch vụ nhận dạng giọng nói.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
       android:name=".MainApplication"

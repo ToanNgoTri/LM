@@ -24,8 +24,22 @@ import { useIsFocused } from '@react-navigation/native';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useSubscription } from '../subscription/SubscriptionContext';
 import { PaywallModal } from '../subscription/PaywallModal';
+import MicButton from './components/MicButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Chiều cao hàng tiêu đề nổi (avatar 40 + đệm trên/dưới). Danh sách nằm DƯỚI
+// tiêu đề nên phải tự chừa đúng bấy nhiêu ở phần đệm trên.
+const TOP_BAR_HEIGHT = 58;
+// Đoạn nền loang từ đặc về trong suốt ở dưới hàng tiêu đề. Chữ chạy vào đây là
+// mờ dần chứ không bị cắt ngang một nhát.
+const HEADER_FADE = 36;
+// Chiều cao thanh nhập lúc chỉ có một dòng — CHỈ dùng làm giá trị tạm cho lần
+// dựng đầu tiên; sau đó lấy số đo thật qua onLayout, vì hộp cao lên khi câu hỏi
+// dài xuống nhiều dòng.
+const INPUT_BAR_HEIGHT = 64;
+// Khe hở giữa dòng chữ cuối và mép trên hộp nhập.
+const INPUT_BAR_GAP = 10;
 
 const API_URL = 'https://us-central1-project2-197c0.cloudfunctions.net/askLawAI';
 // Lấy lại câu trả lời mà server vẫn sinh tiếp khi app bị HĐH tạm dừng (user out
@@ -40,6 +54,17 @@ const RESUME_MAX_POLLS = 60;
 const ZOMBIE_CHECK_MS = 3000;
 // Cứ bấy nhiêu ký tự stream ra thì rung một nhịp — rung thưa cho đỡ rối tay.
 const VIBRATE_EVERY_CHARS = 8;
+// Tốc độ GÕ mong muốn: 14ms cho mỗi ký tự (~70 ký tự/giây) — đủ thong thả để
+// mắt đọc theo kịp. Đây chỉ là tốc độ hiển thị, KHÔNG còn là nhịp vẽ lại.
+//
+// Đo trên máy thật: một lần vẽ tốn ~40ms ở luồng giao diện, còn setTimeout của
+// RN thì khoá theo khung hình nên không bao giờ về sớm hơn ~17ms. Vẽ từng ký tự
+// một vì thế tự đặt trần ~18 ký tự/giây, dù phần JS chỉ tốn 0,4ms. Gộp nhiều ký
+// tự vào chung một lần vẽ thì cùng ngần ấy công mà chữ chạy đúng tốc độ.
+const MS_PER_CHAR = 14;
+// Trần ký tự cho mỗi lần vẽ, để lúc app vừa chạy lại sau một quãng dài không
+// đổ ụp cả đoạn ra màn hình.
+const MAX_CHARS_PER_FLUSH = 24;
 
 // jobId: server dùng làm _id của job -> phải khớp /^[A-Za-z0-9_-]{8,64}$/.
 const makeJobId = () =>
@@ -203,11 +228,6 @@ const MessageBubble = memo(({ item, onCopy }) => {
         { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
       ]}
     >
-      {!isUser && (
-        <View style={styles.avatar}>
-          <Ionicons name="sparkles" size={14} color="#fff" />
-        </View>
-      )}
       <TouchableOpacity
         activeOpacity={0.85}
         onLongPress={() => onCopy?.(item.text)}
@@ -374,10 +394,45 @@ export const AIChatScreen = () => {
   // do code (lúc push/stream) không bao giờ tự tắt -> tránh race khi câu trả
   // lời về nhanh làm animation dừng chưa tới đáy.
   const userScrollingRef = useRef(false);
+  // Chiều cao nội dung, chiều cao khung nhìn và vị trí cuộn gần nhất.
+  const contentHeightRef = useRef(0);
+  const viewportHRef = useRef(0);
+  const scrollOffsetRef = useRef(0);
+
+  // --- Ghim câu hỏi vừa gửi lên đỉnh màn hình ---------------------------
+  // Gửi xong thì chèn một vùng đệm rỗng cao đúng một màn hình vào cuối danh
+  // sách. Nhờ nó câu hỏi mới mới CÓ THỂ cuộn lên tới đỉnh dù bên dưới chưa có
+  // gì; câu trả lời sau đó chảy dần vào khoảng trống ấy, câu hỏi đứng yên.
+  const [tailSpacer, setTailSpacer] = useState(0);
+  const tailSpacerRef = useRef(0);
+  const pinnedRef = useRef(false);
+  // headerPad dùng trong callback -> giữ qua ref cho khỏi dựng lại callback.
+  const headerPadRef = useRef(0);
+
+  const setSpacer = useCallback(h => {
+    tailSpacerRef.current = h;
+    setTailSpacer(h);
+  }, []);
+
+  const releasePin = useCallback(() => {
+    pinnedRef.current = false;
+    if (tailSpacerRef.current !== 0) setSpacer(0);
+  }, [setSpacer]);
 
   const scrollToBottom = useCallback((animated = true) => {
     autoScrollRef.current = true;
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated }), 80);
+    // Cờ "user đang tự cuộn" chỉ được xoá ở sự kiện KẾT THÚC cuộn. Thả tay xong
+    // mà bàn phím bật lên nuốt mất sự kiện đó thì cờ kẹt lại true, và ngay sau
+    // đó handleScroll sẽ tắt auto-scroll trở lại. Xoá tay ở đây.
+    userScrollingRef.current = false;
+    const jump = () =>
+      flatListRef.current?.scrollToOffset({
+        offset: contentHeightRef.current,
+        animated,
+      });
+    jump();
+    setTimeout(jump, 120);
+    setTimeout(jump, 320);
   }, []);
 
   // Vị trí cuộn quyết định auto-scroll:
@@ -386,6 +441,7 @@ export const AIChatScreen = () => {
   //  - rời đáy do code cuộn     -> giữ nguyên (không tắt)
   const handleScroll = useCallback(e => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    scrollOffsetRef.current = contentOffset.y;
     const distanceFromBottom =
       contentSize.height - (contentOffset.y + layoutMeasurement.height);
     if (distanceFromBottom <= 80) {
@@ -407,6 +463,76 @@ export const AIChatScreen = () => {
     userScrollingRef.current = false;
   }, []);
 
+  // Nội dung vừa cao lên và ĐÃ đo xong -> đây là lúc duy nhất biết chắc đáy nằm
+  // ở đâu. Dùng chiều cao FlatList vừa báo chứ không gọi scrollToEnd (hàm đó
+  // đọc lại số đo có thể còn cũ). RN tự kẹp offset nên không sợ quá đà.
+  const handleContentSizeChange = useCallback((_w, h) => {
+    // Ghi TRƯỚC khi kiểm tra auto-scroll: user cuộn lên đọc lại thì vẫn phải
+    // biết đáy nằm ở đâu, không thì lúc bấm gửi sẽ nhảy về một số cũ mèm.
+    contentHeightRef.current = h;
+    if (!autoScrollRef.current) return;
+
+    if (pinnedRef.current) {
+      // Nội dung thật (không tính vùng đệm) đã tràn quá đáy khung nhìn chưa?
+      // Chưa thì đứng yên — câu trả lời đang lấp dần khoảng trống dưới câu hỏi.
+      // Tràn rồi thì nhả ghim và bám đáy như thường; ngay tại điểm giao này hai
+      // cách cho ra cùng một vị trí nên mắt không thấy giật.
+      const real = h - tailSpacerRef.current;
+      if (real <= scrollOffsetRef.current + viewportHRef.current) return;
+      releasePin();
+      return;
+    }
+
+    flatListRef.current?.scrollToOffset({ offset: h, animated: false });
+  }, [releasePin]);
+
+  // Bàn phím đóng lại làm KHUNG NHÌN cao lên, nhưng chiều cao nội dung không
+  // đổi nên onContentSizeChange im lặng. Không bắt thêm ở đây thì cụm "đang suy
+  // nghĩ" nằm lại dưới hộp nhập.
+  const handleListLayout = useCallback(e => {
+    viewportHRef.current = e.nativeEvent.layout.height;
+    if (!autoScrollRef.current || pinnedRef.current) return;
+    flatListRef.current?.scrollToOffset({
+      offset: contentHeightRef.current,
+      animated: false,
+    });
+  }, []);
+
+  // scrollToIndex cần số đo của ô; ô chưa dựng xong thì RN gọi vào đây.
+  const handleScrollToIndexFailed = useCallback(info => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({
+        index: Math.min(info.index, info.highestMeasuredFrameIndex),
+        viewPosition: 0,
+        viewOffset: headerPadRef.current,
+        animated: false,
+      });
+    }, 50);
+  }, []);
+
+  // Đẩy câu hỏi vừa gửi lên sát đỉnh màn hình.
+  const pinQuestionToTop = useCallback(
+    index => {
+      autoScrollRef.current = true;
+      userScrollingRef.current = false;
+      pinnedRef.current = true;
+      setSpacer(viewportHRef.current);
+
+      const jump = animated => () =>
+        flatListRef.current?.scrollToIndex({
+          index,
+          viewPosition: 0,
+          viewOffset: headerPadRef.current,
+          animated,
+        });
+      // Chờ ô mới dựng xong mới nhảy được; bàn phím Android đóng mất ~250ms nên
+      // chỉnh lại một nhịp nữa cho đứng đúng chỗ.
+      setTimeout(jump(true), 60);
+      setTimeout(jump(false), 340);
+    },
+    [setSpacer],
+  );
+
   // Ref ổn định: giữ flatListRef nội bộ + expose global.AIChatRef để nhấn lần 2
   // vào bottom tab "Chat AI" cuộn lên đầu.
   const setListRef = useCallback(ref => {
@@ -418,38 +544,64 @@ export const AIChatScreen = () => {
   }, []);
 
   const charCountRef = useRef(0);
+  // Mốc thời gian lần vẽ trước, để biết quãng vừa rồi đáng lẽ gõ được mấy ký tự.
+  const lastFlushAtRef = useRef(0);
+  // Số ký tự tại lần rung gần nhất.
+  const lastVibrateAtRef = useRef(0);
 
   // Xử lý từng ký tự từ queue với setTimeout — rung thưa theo cụm ký tự
 const scheduleNextChar = useCallback(() => {
-  if (charQueueRef.current.length === 0) {
+  const queue = charQueueRef.current;
+  if (queue.length === 0) {
     charTimerRef.current = null;
+    lastFlushAtRef.current = 0;
     return;
   }
 
-  const char = charQueueRef.current.shift();
+  // Lấy ra đúng số ký tự ĐÁNG LẼ đã gõ xong trong quãng vừa trôi qua, thay vì
+  // cứng nhắc một ký tự mỗi lần. Nhịp vẽ chậm bao nhiêu thì mỗi lần lấy nhiều
+  // bấy nhiêu, nên tốc độ chữ chạy không còn phụ thuộc vào máy nhanh hay chậm.
+  const now = Date.now();
+  const elapsed = lastFlushAtRef.current
+    ? now - lastFlushAtRef.current
+    : MS_PER_CHAR;
+  lastFlushAtRef.current = now;
+
+  const take = Math.min(
+    queue.length,
+    MAX_CHARS_PER_FLUSH,
+    Math.max(1, Math.round(elapsed / MS_PER_CHAR)),
+  );
+  const chunk = queue.splice(0, take).join('');
   const id = assistantIdRef.current;
 
-  charCountRef.current = (charCountRef.current || 0) + 1;
+  charCountRef.current = (charCountRef.current || 0) + take;
 
   // Chỉ rung khi đang ở màn hình Chat AI, và rung thưa (mỗi VIBRATE_EVERY_CHARS
-  // ký tự) để tránh cảm giác rung liên tục khi stream.
-  if (isFocusedRef.current && charCountRef.current % VIBRATE_EVERY_CHARS === 0) {
+  // ký tự) để tránh cảm giác rung liên tục khi stream. Đếm theo mốc chứ không
+  // theo phép chia hết: một lần vẽ giờ nuốt nhiều ký tự nên mốc chia hết có thể
+  // bị nhảy qua, trước đây chính chỗ này làm mất hẳn rung.
+  if (
+    isFocusedRef.current &&
+    charCountRef.current - lastVibrateAtRef.current >= VIBRATE_EVERY_CHARS
+  ) {
+    lastVibrateAtRef.current = charCountRef.current;
     Vibration.vibrate(6);
   }
 
   setMessages(prev =>
     prev.map(msg =>
-      msg.id === id ? { ...msg, text: msg.text + char } : msg,
+      msg.id === id ? { ...msg, text: msg.text + chunk } : msg,
     ),
   );
 
-  // Auto-scroll mỗi 5 ký tự để không gọi quá nhiều — nhưng tôn trọng cử chỉ
-  // của user: nếu user đã cuộn lên trên thì không kéo xuống đáy nữa.
-  if (autoScrollRef.current && charCountRef.current % 5 === 0) {
-    flatListRef.current?.scrollToEnd({ animated: false });
-  }
+  // KHÔNG cuộn ở đây. Vòng lặp này chạy 8ms/ký tự, mà lúc nó gọi thì chữ vừa
+  // thêm còn CHƯA layout xong -> scrollToEnd nhắm vào chiều cao nội dung cũ và
+  // vĩnh viễn đuổi không kịp, chữ mới trôi xuống dưới hộp nhập. Việc cuộn dời
+  // sang onContentSizeChange của FlatList: ở đó chiều cao là số thật, và mỗi
+  // lần layout chỉ cuộn một lần thay vì 25 lần/giây.
 
-  charTimerRef.current = setTimeout(scheduleNextChar, 8);
+  charTimerRef.current = setTimeout(scheduleNextChar, MS_PER_CHAR);
 }, []);
 
 
@@ -466,7 +618,9 @@ const scheduleNextChar = useCallback(() => {
     setIsStreaming(true);
     charQueueRef.current = [];
     charTimerRef.current = null;
-    charCountRef.current = 0; // ← thêm
+    charCountRef.current = 0;
+    lastFlushAtRef.current = 0;
+    lastVibrateAtRef.current = 0;
 
     const assistantId = `ai-${Date.now()}`;
     assistantIdRef.current = assistantId;
@@ -876,9 +1030,43 @@ try {
     pendingRetryRef.current = null;
 
     setMessages(prev => [...prev, userMsg]);
-    scrollToBottom();
+    // Câu vừa thêm nằm ở cuối mảng -> chỉ số của nó là độ dài mảng cũ.
+    pinQuestionToTop(messages.length);
     streamAIResponse(text, history);
-  }, [inputText, isStreaming, messages, streamAIResponse, scrollToBottom]);
+  }, [inputText, isStreaming, messages, streamAIResponse, pinQuestionToTop]);
+
+  // Dừng hẳn câu trả lời đang chảy, giữ nguyên phần chữ đã hiện.
+  const handleStopStreaming = useCallback(() => {
+    // Cắt kết nối trước: không thì server vẫn đẩy tiếp và chữ vẫn chảy ra.
+    try {
+      xhrRef.current?.abort();
+    } catch (_) {}
+    xhrRef.current = null;
+
+    // Bỏ luôn phần đã tải nhưng chưa kịp gõ ra: bấm dừng là dừng ĐÚNG chỗ đang
+    // nhìn thấy, chứ không phải gõ nốt thêm một đoạn nữa.
+    if (charTimerRef.current) {
+      clearTimeout(charTimerRef.current);
+      charTimerRef.current = null;
+    }
+    charQueueRef.current = [];
+    lastFlushAtRef.current = 0;
+
+    // Vô hiệu mọi việc đã hẹn của câu này: lấy lại câu trả lời từ server và gửi
+    // lại tự động đều phải im, nếu không câu vừa dừng sẽ tự sống lại khi user
+    // rời app rồi quay vào.
+    requestSeqRef.current += 1;
+    lastRequestRef.current = null;
+    autoRetryRef.current = 0;
+    leftAppDuringStreamRef.current = false;
+    wentBackgroundRef.current = false;
+    pendingRetryRef.current = null;
+    forceResumeRef.current = null;
+
+    setIsTyping(false);
+    setIsStreaming(false);
+    isStreamingRef.current = false;
+  }, []);
 
   // Xoá sạch khung chat, huỷ stream đang chạy và quay về lời chào ban đầu.
   const handleResetChat = useCallback(() => {
@@ -894,6 +1082,8 @@ try {
       }
       charQueueRef.current = [];
       charCountRef.current = 0;
+      lastFlushAtRef.current = 0;
+      lastVibrateAtRef.current = 0;
       assistantIdRef.current = null;
       // Không để câu cũ tự gửi lại sau khi user đã làm mới khung chat.
       lastRequestRef.current = null;
@@ -910,6 +1100,7 @@ try {
       setMessages(makeInitialMessages());
 
       autoScrollRef.current = true;
+      releasePin();
       Keyboard.dismiss();
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 60);
     };
@@ -922,7 +1113,7 @@ try {
         { text: 'Làm mới', style: 'destructive', onPress: doReset },
       ],
     );
-  }, []);
+  }, [releasePin]);
 
   const handleCopy = useCallback(
     text => {
@@ -946,83 +1137,103 @@ try {
   );
   const keyExtractor = useCallback(item => item.id, []);
 
+  // Thanh nhập nằm sát đáy nên phải tự né bàn phím. Android đã khai
+  // windowSoftInputMode="adjustResize" (cả cửa sổ co lại, thanh tab cũng đi
+  // theo) nên chỉ iOS mới cần cộng chiều cao bàn phím vào phần đệm đáy.
+  // Chiều cao thật của hộp nhập đang nổi. Danh sách phải chừa đúng bấy nhiêu ở
+  // đáy, nếu không scrollToEnd sẽ kéo dòng cuối chui xuống DƯỚI hộp.
+  const [inputBarHeight, setInputBarHeight] = useState(INPUT_BAR_HEIGHT);
+  const handleInputBarLayout = useCallback(e => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setInputBarHeight(prev => (Math.abs(prev - h) > 1 ? h : prev));
+  }, []);
+
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return undefined;
+    const show = Keyboard.addListener('keyboardWillShow', e =>
+      setKeyboardHeight(e.endCoordinates?.height || 0),
+    );
+    const hide = Keyboard.addListener('keyboardWillHide', () =>
+      setKeyboardHeight(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  // Bàn phím lên thì thanh tab bị che, không cần chừa chỗ cho nó nữa.
+  const bottomInset = keyboardHeight > 0 ? keyboardHeight : tabBarHeight;
+
+  // Tin nhắn đầu tiên không được nằm dưới tiêu đề nổi.
+  const headerPad =
+    insets.top +
+    TOP_BAR_HEIGHT +
+    HEADER_FADE +
+    (isPremium && expiryDate ? 18 : 0);
+
+  useEffect(() => {
+    headerPadRef.current = headerPad;
+  }, [headerPad]);
+
   const ListFooter = useCallback(
     () => (
       <>
         {isTyping && (
-          <View style={styles.messageRow}>
-            <View style={styles.avatar}>
-              <Ionicons name="sparkles" size={14} color="#fff" />
-            </View>
+          <View style={[styles.messageRow, styles.messageRowAssistant]}>
             <TypingIndicator />
           </View>
         )}
-        <View style={{ height: 12 }} />
+        {/* 12px là khe thở cuối danh sách; tailSpacer là khoảng trống tạm để
+            câu hỏi vừa gửi cuộn được lên tới đỉnh màn hình. */}
+        <View style={{ height: 12 + tailSpacer }} />
       </>
     ),
-    [isTyping],
+    [isTyping, tailSpacer],
   );
 
   return (
-    <View
-      style={[
-        styles.root,
-        { paddingTop: insets.top, paddingBottom: tabBarHeight },
-      ]}
-    >
+    <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0D0D14" />
 
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <View style={styles.headerAvatar}>
-            <Ionicons name="sparkles" size={16} color="#fff" />
-          </View>
-          <Text style={styles.headerTitle}>Trợ lý Luật AI</Text>
-        </View>
+      {/* Danh sách chiếm trọn màn hình và chạy XUYÊN qua thanh tiêu đề: phần
+          đệm trên của contentContainer chỉ đủ để tin nhắn đầu tiên không bị
+          che, cuộn lên thì thấy chữ lướt sau tiêu đề trong suốt. */}
+      <FlatList
+        ref={setListRef}
+        data={messages}
+        renderItem={renderMessage}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={[
+          styles.listContent,
+          {
+            paddingTop: headerPad,
+            paddingBottom: bottomInset + inputBarHeight + INPUT_BAR_GAP,
+          },
+        ]}
+        ListFooterComponent={ListFooter}
+        showsVerticalScrollIndicator={false}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleUserScrollIdle}
+        onMomentumScrollBegin={handleUserScrollActive}
+        onMomentumScrollEnd={handleUserScrollIdle}
+        onScroll={handleScroll}
+        onContentSizeChange={handleContentSizeChange}
+        onLayout={handleListLayout}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+      />
 
-        <View style={styles.topBarRight}>
-          {isPremium ? (
-            <View style={styles.premiumPill}>
-              <Ionicons name="diamond" size={12} color="#FFD479" />
-              <Text style={styles.premiumPillText}>
-                Premium{planLabel ? ` · ${planLabel}` : ''}
-              </Text>
-            </View>
-          ) : trialRemaining > 0 ? (
-            // Máy mới cài: còn lượt dùng thử model premium.
-            <TouchableOpacity
-              style={styles.trialPill}
-              activeOpacity={0.8}
-              onPress={() => setPaywallVisible(true)}
-            >
-              <Ionicons name="gift" size={12} color="#7FE3A1" />
-              <Text style={styles.trialPillText}>
-                Dùng thử {trialRemaining}/{trialTotal}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.freePill}
-              activeOpacity={0.8}
-              onPress={() => setPaywallVisible(true)}
-            >
-              <Text style={styles.freePillText}>Bản Free</Text>
-              <View style={styles.upgradeChip}>
-                <Ionicons name="sparkles" size={11} color="#fff" />
-                <Text style={styles.upgradeChipText}>Nâng cấp</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {isPremium && expiryDate && (
-        <Text style={styles.expiryText}>
-          Hiệu lực đến {expiryDate.toLocaleDateString('vi-VN')}
-        </Text>
-      )}
-
-      <View style={styles.inputBar}>
+      {/* Hộp nhập NỔI trên danh sách: khung ngoài trong suốt, chỉ đúng cái hộp
+          bo tròn là có nền, nên phần bị che đúng bằng hộp chứ không phải cả
+          một dải ngang màn hình. */}
+      <View
+        pointerEvents="box-none"
+        onLayout={handleInputBarLayout}
+        style={[styles.inputBar, { bottom: bottomInset }]}
+      >
         <View style={styles.inputRow}>
           {/* Làm mới hội thoại: đặt ở đầu bên kia của thanh nhập, đối diện nút
               gửi, để hai nút cân nhau và không bị bấm nhầm lẫn nhau. */}
@@ -1048,45 +1259,102 @@ try {
             blurOnSubmit
             editable={!isStreaming}
           />
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              inputText.trim() && !isStreaming
-                ? styles.sendBtnActive
-                : styles.sendBtnInactive,
-            ]}
-            onPress={handleSend}
-            activeOpacity={0.8}
-            disabled={!inputText.trim() || isStreaming}
-          >
-            <Ionicons
-              name="arrow-down"
-              size={18}
-              color={inputText.trim() && !isStreaming ? '#fff' : '#3A3A58'}
-            />
-          </TouchableOpacity>
+          {/* Đọc câu hỏi bằng giọng nói. Tự ẩn nếu máy/bản build không có bộ
+              nhận dạng, nên không cần kiểm tra gì ở đây. */}
+          <MicButton
+            value={inputText}
+            onChangeText={setInputText}
+            disabled={isStreaming}
+            active={isFocused}
+          />
+          {/* Đang chảy chữ thì chính nút gửi biến thành nút dừng — bấm một
+              lần là cắt hẳn câu trả lời, giữ lại phần đã hiện. */}
+          {isStreaming ? (
+            <TouchableOpacity
+              style={[styles.sendBtn, styles.stopBtn]}
+              onPress={handleStopStreaming}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="stop" size={16} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.sendBtn,
+                inputText.trim() ? styles.sendBtnActive : styles.sendBtnInactive,
+              ]}
+              onPress={handleSend}
+              activeOpacity={0.8}
+              disabled={!inputText.trim()}
+            >
+              <Ionicons
+                name="arrow-up"
+                size={18}
+                color={inputText.trim() ? '#fff' : '#3A3A58'}
+              />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      <View style={styles.headerDivider} />
+      {/* Tiêu đề trong suốt, nổi trên danh sách. pointerEvents="box-none" để
+          khoảng trống giữa tiêu đề và pill vẫn cuộn/chạm xuống được danh sách,
+          chỉ hai đầu (icon trái, phím đăng ký phải) mới nhận chạm. */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.topOverlay, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.topBar} pointerEvents="box-none">
+          <View style={styles.topBarLeft}>
+            <View style={styles.headerAvatar}>
+              <Ionicons name="sparkles" size={16} color="#fff" />
+            </View>
+            {/* <Text style={styles.headerTitle}>Trợ lý Luật AI</Text> */}
+          </View>
 
-      <FlatList
-        ref={setListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
-        ListFooterComponent={ListFooter}
-        showsVerticalScrollIndicator={false}
-        onScrollBeginDrag={handleScrollBeginDrag}
-        onScrollEndDrag={handleUserScrollIdle}
-        onMomentumScrollBegin={handleUserScrollActive}
-        onMomentumScrollEnd={handleUserScrollIdle}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        keyboardShouldPersistTaps="handled"
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-      />
+          <View style={styles.topBarRight}>
+            {isPremium ? (
+              <View style={styles.premiumPill}>
+                <Ionicons name="diamond" size={12} color="#FFD479" />
+                <Text style={styles.premiumPillText}>
+                  Premium{planLabel ? ` · ${planLabel}` : ''}
+                </Text>
+              </View>
+            ) : trialRemaining > 0 ? (
+              // Máy mới cài: còn lượt dùng thử model premium.
+              <TouchableOpacity
+                style={styles.trialPill}
+                activeOpacity={0.8}
+                onPress={() => setPaywallVisible(true)}
+              >
+                <Ionicons name="gift" size={12} color="#7FE3A1" />
+                <Text style={styles.trialPillText}>
+                  Dùng thử {trialRemaining}/{trialTotal}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.freePill}
+                activeOpacity={0.8}
+                onPress={() => setPaywallVisible(true)}
+              >
+                <Text style={styles.freePillText}>Bản Free</Text>
+                <View style={styles.upgradeChip}>
+                  <Ionicons name="sparkles" size={11} color="#fff" />
+                  <Text style={styles.upgradeChipText}>Nâng cấp</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {isPremium && expiryDate && (
+          <Text style={styles.expiryText}>
+            Hiệu lực đến {expiryDate.toLocaleDateString('vi-VN')}
+          </Text>
+        )}
+      </View>
+
 
       <PaywallModal
         visible={paywallVisible}
@@ -1146,14 +1414,27 @@ const styles = StyleSheet.create({
   },
   streamingText: { color: '#22D3A0', fontSize: 11, fontWeight: '500' },
 
-  headerDivider: { height: 1, backgroundColor: '#1E1E30' },
-
+  // Tiêu đề KHÔNG phủ nền đặc kín: nền chuyển tuyến tính từ đặc ở trên xuống
+  // trong suốt hoàn toàn ở dưới. Tin nhắn cuộn lên là mờ dần rồi khuất hẳn,
+  // không bị cắt ngang một nhát ở mép thanh.
+  topOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: HEADER_FADE,
+    experimental_backgroundImage:
+      // Chỉ dải trên cùng là đặc kín (10% chiều cao khối), rồi loang tuyến tính
+      // một mạch tới mép dưới: hàng icon/pill nằm GIỮA đoạn loang nên nhìn
+      // xuyên qua được. Giữ nguyên RGB nền, chỉ hạ alpha, để đoạn loang không
+      // bị ngả xám.
+      'linear-gradient(to bottom, rgba(13,13,20,1) 0%, rgba(13,13,20,1) 10%, rgba(13,13,20,0) 100%)',
+  },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 10,
     paddingBottom: 6,
   },
   topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1228,27 +1509,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     marginBottom: 12,
-    gap: 8,
   },
   messageRowUser: { justifyContent: 'flex-end' },
   messageRowAssistant: { justifyContent: 'flex-start' },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#6C63FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
   bubble: {
-    maxWidth: SCREEN_WIDTH * 0.72,
+    maxWidth: SCREEN_WIDTH * 0.78,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   bubbleUser: { backgroundColor: '#6C63FF', borderBottomRightRadius: 4 },
+  // Không còn avatar chiếm chỗ bên trái nên bong bóng sát lề; chỉ nới bề
+  // ngang vừa đủ để MÉP PHẢI đứng lại đúng chỗ cũ, không ăn hết màn hình.
   bubbleAssistant: {
+    maxWidth: SCREEN_WIDTH * 0.82,
     backgroundColor: '#1A1A2E',
     borderWidth: 1,
     borderColor: '#252540',
@@ -1282,10 +1556,13 @@ const styles = StyleSheet.create({
   typingDots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6C63FF' },
 
+  // Khung ngoài chỉ để định vị: trong suốt hoàn toàn, không nền, không nét
+  // ngăn — tin nhắn chạy được xuống tận đáy màn hình phía sau nó.
   inputBar: {
-    backgroundColor: '#0D0D14',
+    position: 'absolute',
+    left: 0,
+    right: 0,
     paddingHorizontal: 12,
-    paddingTop: 10,
     paddingBottom: 8,
   },
   inputRow: {
@@ -1300,6 +1577,12 @@ const styles = StyleSheet.create({
     paddingLeft: 6,
     paddingRight: 6,
     paddingVertical: 6,
+    // Hộp nổi trên nội dung -> cần đổ bóng để tách khỏi chữ chạy phía sau.
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
   input: {
     flex: 1,
@@ -1326,4 +1609,12 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   sendBtnInactive: { backgroundColor: '#1A1A2E' },
+  stopBtn: {
+    backgroundColor: '#E5484D',
+    shadowColor: '#E5484D',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
 });

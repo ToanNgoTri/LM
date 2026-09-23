@@ -218,6 +218,7 @@ const AppNavigators = () => {
   return (
     <View style={{ flex: 1 }}>
       <Tab.Navigator
+        initialRouteName="AIChat"
         backBehavior="none"
         tabBar={(props) => (
           <CustomTabBar

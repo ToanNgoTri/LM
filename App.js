@@ -73,7 +73,6 @@ const toastConfig = {
 };
 
 import Ionicons from '@react-native-vector-icons/ionicons';
-import { LogBox } from 'react-native';
 
 const ToastCustom = ({ text1, text2 }) => {
   return (
