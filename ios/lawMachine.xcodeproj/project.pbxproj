@@ -227,9 +227,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-lawMachine/Pods-lawMachine-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-lawMachine/Pods-lawMachine-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -266,9 +270,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-lawMachine/Pods-lawMachine-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-lawMachine/Pods-lawMachine-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -295,7 +303,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 60;
+				CURRENT_PROJECT_VERSION = 61;
 				DEVELOPMENT_TEAM = WRLJ8WQ46Z;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = lawMachine/Info.plist;
@@ -304,7 +312,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.4;
+				MARKETING_VERSION = 3.5;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -326,7 +334,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 60;
+				CURRENT_PROJECT_VERSION = 61;
 				DEVELOPMENT_TEAM = WRLJ8WQ46Z;
 				INFOPLIST_FILE = lawMachine/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -334,7 +342,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 3.4;
+				MARKETING_VERSION = 3.5;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
