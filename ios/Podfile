@@ -6,6 +6,24 @@ require Pod::Executable.execute_command('node', ['-p',
   )', __dir__]).strip
 
 platform :ios, min_ios_version_supported
+
+# Dung loi React Native TU MA NGUON thay vi lay ban nhi phan dung san.
+#
+# RN 0.86 mac dinh keo ve React-Core-prebuilt. Ban nhi phan do duoc bien dich
+# voi NDEBUG, nen ben trong no RN_DEBUG_STRING_CONVERTIBLE = 0: lop Props KHONG
+# ke thua DebugStringConvertible va cac ham getDebugProps/vtable tuong ung
+# khong he ton tai.
+#
+# Con cac pod dung tu ma nguon (react-native-screens bien dich
+# RNSScreenShadowNode.cpp, RNSModalScreenShadowNode.cpp...) thi build o Debug,
+# khong co NDEBUG, nen RN_DEBUG_STRING_CONVERTIBLE = 1 va chung THAM CHIEU toi
+# dung nhung ky hieu do. Hai ben lech co -> dut link hang loat
+# facebook::react::DebugStringConvertible / Sealable / Props::getDebugProps.
+#
+# Dat bien nay truoc use_react_native! de moi don vi bien dich dung chung mot
+# bo co. Doi lai: lan build dau lau hon dang ke vi phai dung ca lo
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
