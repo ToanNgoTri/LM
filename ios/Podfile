@@ -17,6 +17,11 @@ end
 target 'lawMachine' do
   config = use_native_modules!
 
+  # Module doc chinh ta cua chinh app. De CocoaPods dung no thi no duoc bien
+  # dich voi dung bo co nhu moi native module khac; de trong app target thi
+  # thieu co cua React va dut link.
+  pod 'LMSpeech', :path => '.'
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
