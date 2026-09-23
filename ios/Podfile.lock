@@ -3,6 +3,28 @@ PODS:
   - hermes-engine (250829098.0.14):
     - hermes-engine/Pre-built (= 250829098.0.14)
   - hermes-engine/Pre-built (250829098.0.14)
+  - LMSpeech (0.0.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - NitroIap (15.3.6):
     - hermes-engine
     - NitroModules
@@ -2280,6 +2302,7 @@ PODS:
 DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - LMSpeech (from `.`)
   - NitroIap (from `../node_modules/react-native-iap`)
   - NitroModules (from `../node_modules/react-native-nitro-modules`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -2380,6 +2403,8 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.14
+  LMSpeech:
+    :path: "."
   NitroIap:
     :path: "../node_modules/react-native-iap"
   NitroModules:
@@ -2556,6 +2581,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   FBLazyVector: b3e7ad108f0d882e30445c5527d774e3fd432f3d
   hermes-engine: 153ebef182ff27ac7c2afdfe2be4a1ff8a43675c
+  LMSpeech: 812d26ccc02e175c880704202fd634c3a087529e
   NitroIap: 01cb54a111f465234bdcc225c526232fc36fceab
   NitroModules: 994eaa7fc39d1fb4b76bb61054312c9796c4a649
   openiap: 9dffe727dc566ff7577a45a2429834c4dddecdb0
@@ -2646,6 +2672,6 @@ SPEC CHECKSUMS:
   Yoga: fe50ab299e578f397fef753cf309c6703a4db29b
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: 6905485bd9b0f9335fcf7d52f39c016a4127a06f
+PODFILE CHECKSUM: 573d2e4a8f7b691dc41249a5fa8b00e757725adb
 
 COCOAPODS: 1.16.2
