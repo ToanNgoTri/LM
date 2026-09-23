@@ -323,6 +323,10 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					Speech,
+					"-framework",
+					AVFoundation,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.lawmachine;
 				PRODUCT_NAME = lawMachine;
@@ -342,6 +346,10 @@
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 60;
 				DEVELOPMENT_TEAM = WRLJ8WQ46Z;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"NDEBUG=1",
+				);
 				INFOPLIST_FILE = lawMachine/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -353,6 +361,10 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					Speech,
+					"-framework",
+					AVFoundation,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.lawmachine;
 				PRODUCT_NAME = lawMachine;

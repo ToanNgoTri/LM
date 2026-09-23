@@ -394,30 +394,8 @@ export const AIChatScreen = () => {
   // do code (lúc push/stream) không bao giờ tự tắt -> tránh race khi câu trả
   // lời về nhanh làm animation dừng chưa tới đáy.
   const userScrollingRef = useRef(false);
-  // Chiều cao nội dung, chiều cao khung nhìn và vị trí cuộn gần nhất.
+  // Chiều cao nội dung gần nhất FlatList báo về.
   const contentHeightRef = useRef(0);
-  const viewportHRef = useRef(0);
-  const scrollOffsetRef = useRef(0);
-
-  // --- Ghim câu hỏi vừa gửi lên đỉnh màn hình ---------------------------
-  // Gửi xong thì chèn một vùng đệm rỗng cao đúng một màn hình vào cuối danh
-  // sách. Nhờ nó câu hỏi mới mới CÓ THỂ cuộn lên tới đỉnh dù bên dưới chưa có
-  // gì; câu trả lời sau đó chảy dần vào khoảng trống ấy, câu hỏi đứng yên.
-  const [tailSpacer, setTailSpacer] = useState(0);
-  const tailSpacerRef = useRef(0);
-  const pinnedRef = useRef(false);
-  // headerPad dùng trong callback -> giữ qua ref cho khỏi dựng lại callback.
-  const headerPadRef = useRef(0);
-
-  const setSpacer = useCallback(h => {
-    tailSpacerRef.current = h;
-    setTailSpacer(h);
-  }, []);
-
-  const releasePin = useCallback(() => {
-    pinnedRef.current = false;
-    if (tailSpacerRef.current !== 0) setSpacer(0);
-  }, [setSpacer]);
 
   const scrollToBottom = useCallback((animated = true) => {
     autoScrollRef.current = true;
@@ -441,7 +419,6 @@ export const AIChatScreen = () => {
   //  - rời đáy do code cuộn     -> giữ nguyên (không tắt)
   const handleScroll = useCallback(e => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    scrollOffsetRef.current = contentOffset.y;
     const distanceFromBottom =
       contentSize.height - (contentOffset.y + layoutMeasurement.height);
     if (distanceFromBottom <= 80) {
@@ -471,67 +448,19 @@ export const AIChatScreen = () => {
     // biết đáy nằm ở đâu, không thì lúc bấm gửi sẽ nhảy về một số cũ mèm.
     contentHeightRef.current = h;
     if (!autoScrollRef.current) return;
-
-    if (pinnedRef.current) {
-      // Nội dung thật (không tính vùng đệm) đã tràn quá đáy khung nhìn chưa?
-      // Chưa thì đứng yên — câu trả lời đang lấp dần khoảng trống dưới câu hỏi.
-      // Tràn rồi thì nhả ghim và bám đáy như thường; ngay tại điểm giao này hai
-      // cách cho ra cùng một vị trí nên mắt không thấy giật.
-      const real = h - tailSpacerRef.current;
-      if (real <= scrollOffsetRef.current + viewportHRef.current) return;
-      releasePin();
-      return;
-    }
-
     flatListRef.current?.scrollToOffset({ offset: h, animated: false });
-  }, [releasePin]);
+  }, []);
 
   // Bàn phím đóng lại làm KHUNG NHÌN cao lên, nhưng chiều cao nội dung không
   // đổi nên onContentSizeChange im lặng. Không bắt thêm ở đây thì cụm "đang suy
   // nghĩ" nằm lại dưới hộp nhập.
-  const handleListLayout = useCallback(e => {
-    viewportHRef.current = e.nativeEvent.layout.height;
-    if (!autoScrollRef.current || pinnedRef.current) return;
+  const handleListLayout = useCallback(() => {
+    if (!autoScrollRef.current) return;
     flatListRef.current?.scrollToOffset({
       offset: contentHeightRef.current,
       animated: false,
     });
   }, []);
-
-  // scrollToIndex cần số đo của ô; ô chưa dựng xong thì RN gọi vào đây.
-  const handleScrollToIndexFailed = useCallback(info => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToIndex({
-        index: Math.min(info.index, info.highestMeasuredFrameIndex),
-        viewPosition: 0,
-        viewOffset: headerPadRef.current,
-        animated: false,
-      });
-    }, 50);
-  }, []);
-
-  // Đẩy câu hỏi vừa gửi lên sát đỉnh màn hình.
-  const pinQuestionToTop = useCallback(
-    index => {
-      autoScrollRef.current = true;
-      userScrollingRef.current = false;
-      pinnedRef.current = true;
-      setSpacer(viewportHRef.current);
-
-      const jump = animated => () =>
-        flatListRef.current?.scrollToIndex({
-          index,
-          viewPosition: 0,
-          viewOffset: headerPadRef.current,
-          animated,
-        });
-      // Chờ ô mới dựng xong mới nhảy được; bàn phím Android đóng mất ~250ms nên
-      // chỉnh lại một nhịp nữa cho đứng đúng chỗ.
-      setTimeout(jump(true), 60);
-      setTimeout(jump(false), 340);
-    },
-    [setSpacer],
-  );
 
   // Ref ổn định: giữ flatListRef nội bộ + expose global.AIChatRef để nhấn lần 2
   // vào bottom tab "Chat AI" cuộn lên đầu.
@@ -1030,10 +959,9 @@ try {
     pendingRetryRef.current = null;
 
     setMessages(prev => [...prev, userMsg]);
-    // Câu vừa thêm nằm ở cuối mảng -> chỉ số của nó là độ dài mảng cũ.
-    pinQuestionToTop(messages.length);
+    scrollToBottom();
     streamAIResponse(text, history);
-  }, [inputText, isStreaming, messages, streamAIResponse, pinQuestionToTop]);
+  }, [inputText, isStreaming, messages, streamAIResponse, scrollToBottom]);
 
   // Dừng hẳn câu trả lời đang chảy, giữ nguyên phần chữ đã hiện.
   const handleStopStreaming = useCallback(() => {
@@ -1100,7 +1028,6 @@ try {
       setMessages(makeInitialMessages());
 
       autoScrollRef.current = true;
-      releasePin();
       Keyboard.dismiss();
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 60);
     };
@@ -1113,7 +1040,7 @@ try {
         { text: 'Làm mới', style: 'destructive', onPress: doReset },
       ],
     );
-  }, [releasePin]);
+  }, []);
 
   const handleCopy = useCallback(
     text => {
@@ -1172,10 +1099,6 @@ try {
     HEADER_FADE +
     (isPremium && expiryDate ? 18 : 0);
 
-  useEffect(() => {
-    headerPadRef.current = headerPad;
-  }, [headerPad]);
-
   const ListFooter = useCallback(
     () => (
       <>
@@ -1184,12 +1107,10 @@ try {
             <TypingIndicator />
           </View>
         )}
-        {/* 12px là khe thở cuối danh sách; tailSpacer là khoảng trống tạm để
-            câu hỏi vừa gửi cuộn được lên tới đỉnh màn hình. */}
-        <View style={{ height: 12 + tailSpacer }} />
+        <View style={{ height: 12 }} />
       </>
     ),
-    [isTyping, tailSpacer],
+    [isTyping],
   );
 
   return (
@@ -1220,7 +1141,6 @@ try {
         onScroll={handleScroll}
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleListLayout}
-        onScrollToIndexFailed={handleScrollToIndexFailed}
         scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
         maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
