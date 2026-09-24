@@ -396,6 +396,13 @@ export const AIChatScreen = () => {
   const userScrollingRef = useRef(false);
   // Chiều cao nội dung gần nhất FlatList báo về.
   const contentHeightRef = useRef(0);
+  // Chiều cao khung nhìn của FlatList.
+  const listHeightRef = useRef(0);
+  // Offset đáy THẬT = nội dung - khung nhìn. Không được dùng thẳng chiều cao nội
+  // dung: iOS không tự kẹp offset nên sẽ cuộn vượt đáy cả một màn hình, chỉ còn
+  // lại khoảng trống.
+  const bottomOffset = () =>
+    Math.max(0, contentHeightRef.current - listHeightRef.current);
 
   const scrollToBottom = useCallback((animated = true) => {
     autoScrollRef.current = true;
@@ -405,7 +412,7 @@ export const AIChatScreen = () => {
     userScrollingRef.current = false;
     const jump = () =>
       flatListRef.current?.scrollToOffset({
-        offset: contentHeightRef.current,
+        offset: bottomOffset(),
         animated,
       });
     jump();
@@ -442,22 +449,26 @@ export const AIChatScreen = () => {
 
   // Nội dung vừa cao lên và ĐÃ đo xong -> đây là lúc duy nhất biết chắc đáy nằm
   // ở đâu. Dùng chiều cao FlatList vừa báo chứ không gọi scrollToEnd (hàm đó
-  // đọc lại số đo có thể còn cũ). RN tự kẹp offset nên không sợ quá đà.
+  // đọc lại số đo có thể còn cũ).
   const handleContentSizeChange = useCallback((_w, h) => {
     // Ghi TRƯỚC khi kiểm tra auto-scroll: user cuộn lên đọc lại thì vẫn phải
     // biết đáy nằm ở đâu, không thì lúc bấm gửi sẽ nhảy về một số cũ mèm.
     contentHeightRef.current = h;
     if (!autoScrollRef.current) return;
-    flatListRef.current?.scrollToOffset({ offset: h, animated: false });
+    flatListRef.current?.scrollToOffset({
+      offset: bottomOffset(),
+      animated: false,
+    });
   }, []);
 
   // Bàn phím đóng lại làm KHUNG NHÌN cao lên, nhưng chiều cao nội dung không
   // đổi nên onContentSizeChange im lặng. Không bắt thêm ở đây thì cụm "đang suy
   // nghĩ" nằm lại dưới hộp nhập.
-  const handleListLayout = useCallback(() => {
+  const handleListLayout = useCallback(e => {
+    listHeightRef.current = e.nativeEvent.layout.height;
     if (!autoScrollRef.current) return;
     flatListRef.current?.scrollToOffset({
-      offset: contentHeightRef.current,
+      offset: bottomOffset(),
       animated: false,
     });
   }, []);
@@ -1064,9 +1075,6 @@ try {
   );
   const keyExtractor = useCallback(item => item.id, []);
 
-  // Thanh nhập nằm sát đáy nên phải tự né bàn phím. Android đã khai
-  // windowSoftInputMode="adjustResize" (cả cửa sổ co lại, thanh tab cũng đi
-  // theo) nên chỉ iOS mới cần cộng chiều cao bàn phím vào phần đệm đáy.
   // Chiều cao thật của hộp nhập đang nổi. Danh sách phải chừa đúng bấy nhiêu ở
   // đáy, nếu không scrollToEnd sẽ kéo dòng cuối chui xuống DƯỚI hộp.
   const [inputBarHeight, setInputBarHeight] = useState(INPUT_BAR_HEIGHT);
@@ -1075,20 +1083,44 @@ try {
     setInputBarHeight(prev => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
 
+  // Phần màn hình bị bàn phím CHE THẬT (tính từ đáy khung chat). Đo trên cả hai
+  // nền tảng: targetSdk 35+ bắt Android chạy edge-to-edge nên adjustResize không
+  // còn co cửa sổ -> bàn phím đè thẳng lên nội dung. Máy Android cũ vẫn co cửa
+  // sổ thì đáy khung chat đã nằm trên bàn phím -> phần che = 0, không cộng đôi.
+  const rootRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
-    if (Platform.OS !== 'ios') return undefined;
-    const show = Keyboard.addListener('keyboardWillShow', e =>
-      setKeyboardHeight(e.endCoordinates?.height || 0),
-    );
-    const hide = Keyboard.addListener('keyboardWillHide', () =>
-      setKeyboardHeight(0),
-    );
+    const showEvt =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, e => {
+      const kbTop = e.endCoordinates?.screenY;
+      // RN Android báo chiều cao bàn phím ĐÃ TRỪ thanh điều hướng, nhưng chạy
+      // edge-to-edge thì bàn phím che luôn cả dải đó -> cộng lại, không thì hộp
+      // nhập hụt đúng bấy nhiêu và bị che mất nửa.
+      const kbHeight =
+        (e.endCoordinates?.height || 0) +
+        (Platform.OS === 'android' ? insets.bottom : 0);
+      const apply = overlap => {
+        setKeyboardHeight(overlap > 1 ? overlap : 0);
+        // Mở bàn phím là sắp gõ câu mới -> kéo nội dung cuối lên trên hộp nhập.
+        scrollToBottom(false);
+      };
+      if (!rootRef.current || kbTop == null) {
+        apply(kbHeight);
+        return;
+      }
+      rootRef.current.measureInWindow((_x, y, _w, h) => {
+        apply(Math.max(0, Math.min(kbHeight, y + h - kbTop)));
+      });
+    });
+    const hide = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
     return () => {
       show.remove();
       hide.remove();
     };
-  }, []);
+  }, [scrollToBottom, insets.bottom]);
   // Bàn phím lên thì thanh tab bị che, không cần chừa chỗ cho nó nữa.
   const bottomInset = keyboardHeight > 0 ? keyboardHeight : tabBarHeight;
 
@@ -1114,7 +1146,7 @@ try {
   );
 
   return (
-    <View style={styles.root}>
+    <View ref={rootRef} style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0D0D14" />
 
       {/* Danh sách chiếm trọn màn hình và chạy XUYÊN qua thanh tiêu đề: phần
@@ -1143,7 +1175,6 @@ try {
         onLayout={handleListLayout}
         scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
       />
 
       {/* Hộp nhập NỔI trên danh sách: khung ngoài trong suốt, chỉ đúng cái hộp
@@ -1177,14 +1208,12 @@ try {
             returnKeyType="send"
             onSubmitEditing={handleSend}
             blurOnSubmit
-            editable={!isStreaming}
           />
           {/* Đọc câu hỏi bằng giọng nói. Tự ẩn nếu máy/bản build không có bộ
               nhận dạng, nên không cần kiểm tra gì ở đây. */}
           <MicButton
             value={inputText}
             onChangeText={setInputText}
-            disabled={isStreaming}
             active={isFocused}
           />
           {/* Đang chảy chữ thì chính nút gửi biến thành nút dừng — bấm một
