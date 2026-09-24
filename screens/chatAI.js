@@ -521,7 +521,10 @@ const scheduleNextChar = useCallback(() => {
   // ký tự) để tránh cảm giác rung liên tục khi stream. Đếm theo mốc chứ không
   // theo phép chia hết: một lần vẽ giờ nuốt nhiều ký tự nên mốc chia hết có thể
   // bị nhảy qua, trước đây chính chỗ này làm mất hẳn rung.
+  // iOS bỏ qua thời lượng truyền vào: mỗi lần gọi là một lần rung đầy ~0,4s,
+  // gọi dày thế này thì các nhịp dồn vào nhau -> chỉ rung trên Android.
   if (
+    Platform.OS === 'android' &&
     isFocusedRef.current &&
     charCountRef.current - lastVibrateAtRef.current >= VIBRATE_EVERY_CHARS
   ) {
@@ -918,7 +921,9 @@ try {
 
     xhr.ontimeout = () => failStream('Hết thời gian chờ. Thử lại sau.');
 
-    xhr.timeout = 60000;
+    // Tính trên CẢ quá trình stream chứ không phải lúc im lặng -> phải bằng
+    // timeoutSeconds của askLawAI (180s), không thì câu dài bị cắt ở giây 60.
+    xhr.timeout = 180000;
     xhr.send(
       JSON.stringify({
         question: userText,
