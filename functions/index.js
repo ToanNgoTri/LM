@@ -604,7 +604,7 @@ ${context}`,
               messages: [...history, systemMsg, userMsg],
               temperature: 0.2,
               // 500 token chỉ ~1.500 ký tự tiếng Việt -> câu dài bị cắt ngang.
-              max_tokens: 2048,
+              max_tokens: 4096,
               stream: true,
             }),
           });
