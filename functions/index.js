@@ -355,24 +355,7 @@ export const askLawAI = onRequest(
     const FREE_MODELS = [
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
-      'poolside/laguna-xs-2.1:free',
-      'inclusionai/ling-3.0-flash:free',
-      "minimax/minimax-m3:free",
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "nvidia/nemotron-3.5-lightning:free",
-      "inclusionai/ling-3.0-flash-fin:free",
-      "minimax/minimax-m2.7:free",
-      "nvidia/nemotron-3-super-120b-a12b:free",
-      "thinkingmachines/inkling:free",
-      "dots-studio/dots-3-note-preview:free",
-      "poolside/laguna-xs-2.1:free",
-      "cohere/north-mini-code:free",
-      "thinkingmachines/inkling-small:free",
-      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-      "z-ai/glm-5.2:free",
-      "liquid/lfm-2.5-2.6b:free",
-      "nvidia/nemotron-3.5-content-safety:free",
-      // "openrouter/free"
+      'qwen/qwen3.8-27b:free',
     ];
 
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
