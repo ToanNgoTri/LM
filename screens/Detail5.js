@@ -1757,8 +1757,8 @@ export function Detail5() {
               <Ionicons
                 name={
                   showArticle && panelMode === 'bookmark'
-                    ? 'star'
-                    : 'star-outline'
+                    ? 'bookmark'
+                    : 'bookmark-outline'
                 }
                 style={
                   showArticle && panelMode === 'bookmark'
