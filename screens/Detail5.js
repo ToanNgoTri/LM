@@ -42,6 +42,7 @@ import {
   writeUserJson,
 } from '../storage/userFiles';
 import { LawTable } from './components/LawTable';
+import { isAppendixKey, parseAppendixTitle } from '../utils/lawAppendix';
 import {
   hasTableMarks,
   indexTables,
@@ -377,19 +378,39 @@ export function Detail5() {
     Vibration.vibrate(20);
   }
 
-  // nút sao dùng chung cho a / b / c
-  const renderStarForEndClause = title => {
+  // Tiêu đề điều + nút sao (ngay sau chữ cuối), dùng chung cho a / b / c.
+  // Tiêu đề tự nhận chạm (Text onPress/onLongPress) thay vì bọc Pressable để
+  // cha không tranh cú chạm với sao; sao là <Text> lồng nên không có hitSlop ->
+  // nới vùng bấm bằng icon to + khoảng trắng không ngắt (NBSP) hai bên.
+  function renderDieuHeader(dieuId, title, clauses, label) {
     const isMarked = bookmarks.includes(title);
     return (
-      <Text onPress={() => toggleBookmark(title)}>
-        {'\u00A0\u00A0'}
-        <Ionicons
-          name={isMarked ? 'star' : 'star-outline'}
-          style={{ fontSize: 15, color: isMarked ? '#FFB300' : 'gray' }}
-        />
+      <Text
+        onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
+        onPress={() => pressDieu(dieuId, title, clauses)}
+        suppressHighlighting={true}
+        style={[
+          styles.dieu,
+          { fontSize, lineHeight: dieuLineHeight },
+          isDieuSelected(dieuId) ? styles.copiedBg : null,
+        ]}
+      >
+        {highlight(label, valueInput, true)}
+        <Text
+          onPress={() => toggleBookmark(title)}
+          suppressHighlighting={true}
+        >
+          {'   '}
+          <Ionicons
+            name={isMarked ? 'star' : 'star-outline'}
+            style={{ fontSize: 20, color: isMarked ? '#FFB300' : 'gray' }}
+          />
+          {'   '}
+        </Text>
       </Text>
     );
-  };
+  }
+
   async function StoreInternal() {
     // Đọc kèm giá trị mặc định: nếu một trong hai file bị mất hoặc hỏng thì
     // dựng lại từ đầu thay vì ném lỗi (trước đây order.txt được đọc thẳng,
@@ -853,6 +874,20 @@ export function Detail5() {
 
   TopUnitCount = Content && Object.keys(Content).length;
 
+  // Văn bản chính có Chương/Phần (cùng regex với vòng vẽ Content.map) -> phụ lục
+  // thu gọn được như Chương; chỉ có Điều -> phụ lục luôn mở (renderAppendix).
+  const chapterMode =
+    Array.isArray(Content) &&
+    Content.some(item => {
+      const k = item && Object.keys(item)[0];
+      return (
+        typeof k === 'string' &&
+        !isAppendixKey(k) &&
+        (/^(phần\s+(thứ|[ivx]|\d).*)|^chương .*/im.test(k) ||
+          /^(V|I|X|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z)*\./.test(k))
+      );
+    });
+
   function Shrink() {
     for (let b = 0; b <= TopUnitCount - 1; b++) {
       if (tittleArray == []) {
@@ -1122,6 +1157,8 @@ export function Detail5() {
                 table={Tables[seg.id]}
                 lines={seg.lines}
                 fontSize={fontSize}
+                // đang tìm kiếm: vẽ hết hàng để đếm/tô sáng đủ kết quả
+                showAll={Boolean(valueInput)}
                 renderText={(text, style) =>
                   highlight([text], valueInput, false, style)
                 }
@@ -1140,6 +1177,103 @@ export function Detail5() {
         {highlight([text], valueInput, false)}
       </Text>
     );
+  }
+
+  // ─── Phụ lục / văn bản kèm theo (utils/lawAppendix.js) ───────────────────────
+  // Mục cấp cao có khóa bắt đầu bằng U+2062, nối ở cuối Content.
+  //  - Văn bản chính có Chương/Phần: tiêu đề phụ lục thu gọn được như Chương
+  //    (dùng chung tittleArray theo chỉ số i -> "thu gọn/mở tất cả" bao luôn phụ lục).
+  //  - Văn bản chính chỉ có Điều: tiêu đề không nhấn được, luôn mở.
+  //  - Chương bên trong phụ lục: nhãn tĩnh, KHÔNG thu gọn.
+  //  - Không có sao/bookmark; khóa mục lục & chọn-copy có tiền tố tên phụ lục để
+  //    không trùng "Điều 1" của văn bản chính.
+  // KHÔNG đổi onlyArticle ở đây (nếu không nút thu gọn sẽ hiện ở văn bản chỉ có Điều).
+  function renderAppendix(key, i, collapsible) {
+    const rawTitle = Object.keys(key)[0];
+    const { badge, name, sub, short } = parseAppendixTitle(rawTitle);
+    const open = !collapsible || showArticle || find || !tittleArray.includes(i);
+    const header = (
+      <View style={styles.appendixHeader}>
+        <Text style={styles.appendixBadge}>{badge}</Text>
+        {name ? (
+          <Text style={[styles.appendixName, { fontSize: fontSize + 2 }]}>
+            {name.toUpperCase()}
+          </Text>
+        ) : null}
+        {sub ? <Text style={styles.appendixSub}>{sub}</Text> : null}
+      </View>
+    );
+    return (
+      <>
+        {collapsible ? (
+          <TouchableOpacity onPress={() => collapse(i)}>{header}</TouchableOpacity>
+        ) : (
+          header
+        )}
+        <View style={[styles.appendixBody, !open && styles.content]}>
+          {renderAppendixItems(key[rawTitle], i, short, '')}
+        </View>
+      </>
+    );
+  }
+
+  function renderAppendixItems(items, i, short, path) {
+    if (!Array.isArray(items)) {
+      // dữ liệu lạ: hiện như 1 khối chữ
+      const clauses = getClauses(items);
+      return renderClauses(clauses, short, `p-${i}-${path}x`);
+    }
+    return items.map((item, j) => {
+      if (!item || typeof item !== 'object') return null;
+      const title = Object.keys(item)[0];
+      const value = item[title];
+      const id = `p-${i}-${path}${j}`;
+
+      if (Array.isArray(value)) {
+        // Chương / Mục… trong phụ lục: nhãn tĩnh, không thu gọn
+        return (
+          <View key={id}>
+            <Text style={[styles.appendixChapter, { fontSize }]}>
+              {String(title).toUpperCase()}
+            </Text>
+            {renderAppendixItems(value, i, short, `${path}${j}-`)}
+          </View>
+        );
+      }
+
+      const hasTitle = String(title).trim() !== '';
+      const copyTitle = hasTitle ? `${short} - ${title}` : short;
+      const clauses = getClauses(value);
+      return (
+        <Animated.View
+          key={id}
+          style={{ paddingVertical: 4 }}
+          onLayout={
+            hasTitle
+              ? event => measureArticle(event.target, `${short} · ${title}`)
+              : undefined
+          }
+        >
+          {hasTitle && (
+            <Pressable
+              onLongPress={() => selectWholeDieu(id, copyTitle, clauses)}
+              onPress={() => pressDieu(id, copyTitle, clauses)}
+            >
+              <Text
+                style={[
+                  styles.dieu,
+                  { fontSize, lineHeight: dieuLineHeight },
+                  isDieuSelected(id) ? styles.copiedBg : null,
+                ]}
+              >
+                {highlight([title], valueInput, true)}
+              </Text>
+            </Pressable>
+          )}
+          {renderClauses(clauses, copyTitle, id)}
+        </Animated.View>
+      );
+    });
   }
 
   const a = (key, i, key1, i1a, t) => {
@@ -1169,24 +1303,8 @@ export function Detail5() {
                   measureArticle(event.target, Object.keys(key2)[0])
                 }
               >
-                {Object.keys(key2) == ' ' || (
-                  <Pressable
-                    onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
-                    onPress={() => pressDieu(dieuId, title, clauses)}
-                  >
-                    <Text
-                      // selectable={true}
-                      style={[
-                        styles.dieu,
-                        { fontSize, lineHeight: dieuLineHeight },
-                        isDieuSelected(dieuId) ? styles.copiedBg : null,
-                      ]}
-                    >
-                      {highlight(Object.keys(key2), valueInput, true)}
-                      {renderStarForEndClause(title)}
-                    </Text>
-                  </Pressable>
-                )}
+                {Object.keys(key2) == ' ' ||
+                  renderDieuHeader(dieuId, title, clauses, Object.keys(key2))}
 
                 {renderClauses(clauses, title, dieuId)}
               </Animated.View>
@@ -1278,24 +1396,7 @@ export function Detail5() {
                     const bDieuId = `b-${i}-${iC}`;
                     return (
                       <>
-                        <Pressable
-                          onLongPress={() =>
-                            selectWholeDieu(bDieuId, bTitle, bClauses)
-                          }
-                          onPress={() => pressDieu(bDieuId, bTitle, bClauses)}
-                        >
-                          <Text
-                            // selectable={true}
-                            style={[
-                              styles.dieu,
-                              { fontSize, lineHeight: dieuLineHeight },
-                              isDieuSelected(bDieuId) ? styles.copiedBg : null,
-                            ]}
-                          >
-                            {highlight(Object.keys(keyC), valueInput, true)}
-                            {renderStarForEndClause(bTitle)}
-                          </Text>
-                        </Pressable>
+                        {renderDieuHeader(bDieuId, bTitle, bClauses, Object.keys(keyC))}
                         {renderClauses(bClauses, bTitle, bDieuId)}
                       </>
                     );
@@ -1324,22 +1425,7 @@ export function Detail5() {
             style={{ paddingVertical: 4 }}
             onLayout={event => measureArticle(event.target, ObjKeys)}
           >
-            <Pressable
-              onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
-              onPress={() => pressDieu(dieuId, title, clauses)}
-            >
-              <Text
-                // selectable={true}
-                style={[
-                  styles.dieu,
-                  { fontSize, lineHeight: dieuLineHeight },
-                  isDieuSelected(dieuId) ? styles.copiedBg : null,
-                ]}
-              >
-                {highlight([ObjKeys], valueInput, true)}
-                {renderStarForEndClause(title)}
-              </Text>
-            </Pressable>
+            {renderDieuHeader(dieuId, title, clauses, [ObjKeys])}
 
             {renderClauses(clauses, title, dieuId)}
           </Animated.View>
@@ -1506,6 +1592,14 @@ export function Detail5() {
                         // dispatch(noLoading())
                       }
                       // console.log('key',key);
+
+                      if (isAppendixKey(Object.keys(key)[0])) {
+                        return (
+                          <View key={`${i}Main`}>
+                            {renderAppendix(key, i, chapterMode)}
+                          </View>
+                        );
+                      }
 
                       return (
                         <View key={`${i}Main`}>
@@ -2483,6 +2577,52 @@ const styles = StyleSheet.create({
     color: 'black',
     alignItems: 'center',
     marginBottom: 1,
+  },
+  // phụ lục / văn bản kèm theo: tông xanh ngọc để khác hẳn Chương (vàng cam)
+  appendixHeader: {
+    backgroundColor: '#26A69A',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 12,
+    marginBottom: 1,
+  },
+  appendixBadge: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#26A69A',
+    backgroundColor: 'white',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    overflow: 'hidden',
+    letterSpacing: 1,
+  },
+  appendixName: {
+    color: 'white',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  appendixSub: {
+    color: '#E0F2F1',
+    fontStyle: 'italic',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  appendixBody: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#26A69A',
+  },
+  appendixChapter: {
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#00695C',
+    backgroundColor: '#E0F2F1',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 8,
   },
   dieu: {
     fontWeight: 'bold',
