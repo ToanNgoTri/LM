@@ -37,9 +37,17 @@ import {
   BOOKMARKS_FILE,
   DOWNLOADED_FILE,
   ORDER_FILE,
+  SETTINGS_FILE,
   readUserJson,
   writeUserJson,
 } from '../storage/userFiles';
+import { LawTable } from './components/LawTable';
+import {
+  hasTableMarks,
+  indexTables,
+  splitTableSegments,
+  stripTableMarks,
+} from '../utils/lawTables';
 let TopUnitCount; // là đơn vị lớn nhất vd là 'phần thứ' hoặc chươn
 
 let sumChapterArray = []; // array mà mỗi phần tử là 'phần thứ...' có tổng bn chương
@@ -65,6 +73,24 @@ async function saveBookmarksFile(screen, listBookmark) {
     all[screen] = listBookmark;
   }
   await writeUserJson(BOOKMARKS_FILE, all);
+}
+
+/* ------------------------------------------------------------------ */
+/* Cỡ chữ nội dung văn bản (ghi nhớ ở client trong SETTINGS_FILE)      */
+/* ------------------------------------------------------------------ */
+const FONT_DEFAULT = 14;
+const FONT_MIN = 11;
+const FONT_MAX = 26;
+
+async function loadFontSize() {
+  const s = (await readUserJson(SETTINGS_FILE, {})) || {};
+  const v = Number(s.fontSize);
+  return v >= FONT_MIN && v <= FONT_MAX ? v : FONT_DEFAULT;
+}
+
+async function saveFontSize(fontSize) {
+  const s = (await readUserJson(SETTINGS_FILE, {})) || {};
+  await writeUserJson(SETTINGS_FILE, { ...s, fontSize });
 }
 
 // Định dạng ngày dd/mm/yyyy; ngày rỗng/sai -> '' (Intl.format ném RangeError
@@ -303,6 +329,24 @@ export function Detail5() {
 
   const [inputSearchArtical, setInputSearchArtical] = useState('');
 
+  // Cỡ chữ nội dung; lineHeight scale theo cùng tỉ lệ với mặc định (14 -> 23)
+  // để giữ quy tắc lineHeight của lines không lớn hơn highlight.
+  const [fontSize, setFontSize] = useState(FONT_DEFAULT);
+  const [showFontPanel, setShowFontPanel] = useState(false);
+  const lineHeight = Math.round((fontSize * 23) / FONT_DEFAULT);
+  const dieuLineHeight = Math.round((fontSize * 22) / FONT_DEFAULT);
+
+  useEffect(() => {
+    loadFontSize().then(setFontSize);
+  }, []);
+
+  function changeFontSize(next) {
+    const v = Math.min(FONT_MAX, Math.max(FONT_MIN, next));
+    if (v === fontSize) return;
+    setFontSize(v);
+    saveFontSize(v);
+  }
+
   const dispatch = useDispatch();
 
   const route = useRoute();
@@ -354,7 +398,11 @@ export function Detail5() {
     const orderRaw = await readUserJson(ORDER_FILE, []);
     const orderArray = Array.isArray(orderRaw) ? orderRaw : [];
 
-    contentObject[route.params.screen] = { Content: Content, Info: Info };
+    contentObject[route.params.screen] = {
+      Content: Content,
+      Info: Info,
+      Tables: Object.values(Tables),
+    };
 
     // Không thêm trùng: order.txt có thể còn mục cũ khi downloaded.txt hỏng.
     const already = orderArray.some(
@@ -407,6 +455,7 @@ export function Detail5() {
 
   const [Content, setContent] = useState([]);
   const [Info, setInfo] = useState({});
+  const [Tables, setTables] = useState({}); // { id: bảng } từ field `tables` của văn bản
   const [suggestMap, setSuggestMap] = useState({}); // { _id: tên } để rà lawRelated
 
   useEffect(() => {
@@ -495,6 +544,7 @@ export function Detail5() {
     callOneLaw().then(res => {
       setContent(res.content);
       setInfo(res.info || {});
+      setTables(indexTables(res.tables));
     });
   }, [loading]);
 
@@ -514,6 +564,8 @@ export function Detail5() {
 
       if (cont && Object.keys(cont.all).includes(route.params.screen)) {
         setInfo(cont.all[route.params.screen].Info || {});
+        // bản tải về bằng app cũ không có Tables -> bảng hiện như text như trước
+        setTables(indexTables(cont.all[route.params.screen].Tables));
         setContent(cont.all[route.params.screen].Content);
       } else {
         setExists(true);
@@ -595,7 +647,8 @@ export function Detail5() {
 
   let searchResultCount = 0;
   // let c = 0;
-  function highlight(para, word, article) {
+  // textStyle (tuỳ chọn): style chữ riêng, vd ô bảng (components/LawTable)
+  function highlight(para, word, article, textStyle) {
     // Chuẩn hóa đầu vào về chuỗi để tránh trả về object cho <Text>
     const raw = para && para[0];
     if (raw === undefined || raw === null) {
@@ -629,7 +682,9 @@ export function Detail5() {
                 <Text
                   style={{
                     ...(article ? { ...styles.dieu } : {}),
-                    lineHeight: 23,
+                    fontSize,
+                    lineHeight,
+                    ...textStyle,
                   }}
                   key={`${i}xa`}
                 >
@@ -692,10 +747,16 @@ export function Detail5() {
                       ? {
                           ...(article ? { ...styles.dieu } : {}),
                           ...styles.highlight1,
+                          fontSize,
+                          lineHeight,
+                          ...textStyle,
                         }
                       : {
                           ...(article ? { ...styles.dieu } : {}),
                           ...styles.highlight,
+                          fontSize,
+                          lineHeight,
+                          ...textStyle,
                         }
                   }
                   key={`${i}gmi`}
@@ -707,7 +768,9 @@ export function Detail5() {
                 key={`${i}vvv`}
                 style={{
                   ...(article ? { ...styles.dieu } : {}),
-                  lineHeight: 23,
+                  fontSize,
+                  lineHeight,
+                  ...textStyle,
                 }}
               >
                 {current}
@@ -716,14 +779,16 @@ export function Detail5() {
           }, []);
         return (
           <View>
-            <Text style={{ textAlign: 'justify' }}>{searchedPara}</Text>
+            <Text style={[{ textAlign: 'justify', fontSize, lineHeight }, textStyle]}>
+              {searchedPara}
+            </Text>
           </View>
         );
       } else {
-        return <Text>{text}</Text>;
+        return <Text style={textStyle}>{text}</Text>;
       }
     } else {
-      return <Text>{text}</Text>;
+      return <Text style={textStyle}>{text}</Text>;
     }
   }
 
@@ -955,7 +1020,7 @@ export function Detail5() {
     setSelectedDieuId(dId);
     setSelectedClauses(sorted);
     if (sorted.length) {
-      const body = sorted.map(c => c.text).join('\n');
+      const body = stripTableMarks(sorted.map(c => c.text).join('\n'));
       Clipboard.setString(`${title}\n${body}`);
       showToast();
       Vibration.vibrate(20);
@@ -1022,18 +1087,59 @@ export function Detail5() {
   // render nội dung điều: mỗi khoản là 1 vùng nhấn riêng
   // nhấn nhẹ (tap) = chọn/bỏ chọn; giữ (long-press) cũng cho kết quả như vậy
   function renderClauses(clauses, dieuTitle, dieuId) {
-    return clauses.map((clause, idx) => (
-      <Pressable
-        key={`kh${idx}`}
-        onLongPress={() => toggleClause(dieuId, dieuTitle, idx, clause)}
-        onPress={() => pressClause(dieuId, dieuTitle, idx, clause)}
-        style={isClauseSelected(dieuId, idx) ? styles.copiedBg : null}
-      >
-        <Text style={styles.lines}>
-          {highlight([clause], valueInput, false)}
-        </Text>
-      </Pressable>
-    ));
+    return clauses.map((clause, idx) => {
+      const pressProps = {
+        onLongPress: () => toggleClause(dieuId, dieuTitle, idx, clause),
+        onPress: () => pressClause(dieuId, dieuTitle, idx, clause),
+      };
+      const selectedStyle = isClauseSelected(dieuId, idx)
+        ? styles.copiedBg
+        : null;
+
+      if (!hasTableMarks(clause)) {
+        return (
+          <Pressable key={`kh${idx}`} {...pressProps} style={selectedStyle}>
+            {renderClauseText(clause)}
+          </Pressable>
+        );
+      }
+
+      // Khoản có bảng: bảng KHÔNG nằm trong Pressable — Pressable giành cử chỉ
+      // chạm với ScrollView ngang của bảng (Android chỉ kéo được 1 lần).
+      // Phần chữ của khoản vẫn nhấn/giữ để chọn như cũ.
+      return (
+        <View key={`kh${idx}`} style={selectedStyle}>
+          {splitTableSegments(clause).map((seg, k) =>
+            seg.type === 'text' ? (
+              seg.text ? (
+                <Pressable key={`t${k}`} {...pressProps}>
+                  {renderClauseText(seg.text)}
+                </Pressable>
+              ) : null
+            ) : (
+              <LawTable
+                key={`tb${k}`}
+                table={Tables[seg.id]}
+                lines={seg.lines}
+                fontSize={fontSize}
+                renderText={(text, style) =>
+                  highlight([text], valueInput, false, style)
+                }
+              />
+            ),
+          )}
+        </View>
+      );
+    });
+  }
+
+  // phần chữ của khoản (có tô sáng từ khóa tìm kiếm)
+  function renderClauseText(text) {
+    return (
+      <Text style={[styles.lines, { fontSize, lineHeight }]}>
+        {highlight([text], valueInput, false)}
+      </Text>
+    );
   }
 
   const a = (key, i, key1, i1a, t) => {
@@ -1072,6 +1178,7 @@ export function Detail5() {
                       // selectable={true}
                       style={[
                         styles.dieu,
+                        { fontSize, lineHeight: dieuLineHeight },
                         isDieuSelected(dieuId) ? styles.copiedBg : null,
                       ]}
                     >
@@ -1181,6 +1288,7 @@ export function Detail5() {
                             // selectable={true}
                             style={[
                               styles.dieu,
+                              { fontSize, lineHeight: dieuLineHeight },
                               isDieuSelected(bDieuId) ? styles.copiedBg : null,
                             ]}
                           >
@@ -1224,6 +1332,7 @@ export function Detail5() {
                 // selectable={true}
                 style={[
                   styles.dieu,
+                  { fontSize, lineHeight: dieuLineHeight },
                   isDieuSelected(dieuId) ? styles.copiedBg : null,
                 ]}
               >
@@ -1307,6 +1416,7 @@ export function Detail5() {
             }}
           >
             <TouchableOpacity
+              style={{ width: 74 }} // = cụm nút bên phải, để logo luôn ở giữa
               onPressIn={() => {
                 navigation.goBack();
               }}
@@ -1339,7 +1449,23 @@ export function Detail5() {
                 source={require('../assets/t.png')}
               ></Image>
             </TouchableOpacity>
-            <View style={{ alignItems: 'center' }}>
+            <View
+              style={{
+                width: 74,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <TouchableOpacity
+                style={{ marginRight: 14 }}
+                onPressIn={() => {
+                  Keyboard.dismiss();
+                  setShowFontPanel(true);
+                }}
+              >
+                <Ionicons name="text-outline" style={{...styles.IconInfo,fontSize: 26}} />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.iconInfoContainer}
                 onPressIn={() => {
@@ -1837,6 +1963,59 @@ export function Detail5() {
               </View>
             </View>
           </Animated.View>
+
+          {/* Panel chỉnh cỡ chữ: nền trong suốt để thấy chữ đổi ngay phía sau */}
+          <Modal
+            transparent
+            statusBarTranslucent // toạ độ tính từ mép trên màn hình như header
+            animationType="fade"
+            visible={showFontPanel}
+            onRequestClose={() => setShowFontPanel(false)}
+          >
+            <Pressable
+              style={{ flex: 1 }}
+              onPress={() => setShowFontPanel(false)}
+            >
+              <Pressable
+                // chặn tap trong panel lan ra nền (nền sẽ đóng panel)
+                onPress={() => {}}
+                style={[styles.fontPanel, { top: insets.top + 50 }]}
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.fontBtn,
+                    fontSize <= FONT_MIN && styles.fontBtnDisabled,
+                  ]}
+                  disabled={fontSize <= FONT_MIN}
+                  onPress={() => changeFontSize(fontSize - 1)}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: 'black' }}>A-</Text>
+                </TouchableOpacity>
+                <Text style={styles.fontValue}>{fontSize}</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.fontBtn,
+                    fontSize >= FONT_MAX && styles.fontBtnDisabled,
+                  ]}
+                  disabled={fontSize >= FONT_MAX}
+                  onPress={() => changeFontSize(fontSize + 1)}
+                >
+                  <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'black' }}>A+</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.fontBtn,
+                    { width: 'auto', paddingHorizontal: 10 },
+                    fontSize === FONT_DEFAULT && styles.fontBtnDisabled,
+                  ]}
+                  disabled={fontSize === FONT_DEFAULT}
+                  onPress={() => changeFontSize(FONT_DEFAULT)}
+                >
+                  <Text style={{ fontSize: 13, color: 'black' }}>Mặc định</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           <Modal
             presentationStyle="pageSheet"
@@ -2515,5 +2694,38 @@ const styles = StyleSheet.create({
     fontSize: 30,
     display: 'flex',
     color: 'white',
+  },
+  fontPanel: {
+    position: 'absolute',
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 8,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  fontBtn: {
+    width: 44,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#EEEEEE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  fontBtnDisabled: {
+    opacity: 0.35,
+  },
+  fontValue: {
+    minWidth: 32,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'black',
   },
 });

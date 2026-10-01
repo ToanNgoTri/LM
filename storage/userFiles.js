@@ -27,6 +27,7 @@ export const ORDER_FILE = DOC + '/order.txt';
 export const BOOKMARKS_FILE = DOC + '/bookmarks.txt';
 export const LASTED_LAW_FILE = DOC + '/lastedLaw.txt';
 export const APPEAR_FILE = DOC + '/Appear.txt';
+export const SETTINGS_FILE = DOC + '/settings.txt'; // tuỳ chỉnh đọc (cỡ chữ...)
 
 // Chạy đúng một lần cho cả vòng đời app; mọi hàm đọc/ghi bên dưới đều await
 // promise này nên không có chuyện màn hình đọc trước khi chuyển xong.
