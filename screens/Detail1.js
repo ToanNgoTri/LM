@@ -25,39 +25,25 @@ import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
 import { setFilterUI } from '../redux/fetchData';
 
 export function Detail1({}) {
-  const [SearchResult, setSearchResult] = useState([]); // đây Object là các luật, điểm, khoản có kết quả tìm kiếm
-  // console.log(SearchResult);
-
+  const [SearchResult, setSearchResult] = useState([]);
   const [paper, setPaper] = useState(0);
-
   const [showFilter, setShowFilter] = useState(false);
-
-  // const [textInputFocus, setTextInputFocus] = useState(false);
-
   const [choosenLaw, setChoosenLaw] = useState([]);
   const [LawFilted, setLawFilted] = useState(false);
-
   const [choosenKindLaw, setChoosenKindLaw] = useState([0, 1, 2, 3]);
-
   const [warning, setWanring] = useState(false);
 
   const textInput = useRef(null);
-
   const FlatListToScroll = useRef(null);
-
   const tabBarHeight = useTabBarHeight();
-
-  const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
-
+  const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
 
-  // Bộ lọc riêng của màn này (search) qua Redux -> không mất khi remount
   const filterUIState = useSelector(state => state['filterUI'].search);
   const input = filterUIState.input;
   const fromDate = filterUIState.dateFrom;
   const toDate = filterUIState.dateTo;
   const chosenAgencies = filterUIState.agencies;
-  // Từ khóa đã áp dụng, truyền sang Detail5 để tự tìm trong văn bản
   const inputForNavi = filterUIState.valueInput;
 
   const setInput = v =>
@@ -97,25 +83,9 @@ export function Detail1({}) {
     );
 
   const { loading1, result } = useSelector(state => state['searchContent']);
-
   const navigation = useNavigation();
-
   const netInfo = useNetInfo();
   let internetConnected = netInfo.isConnected;
-
-  useEffect(() => {
-    setChoosenLaw(
-      Object.keys(SearchResult).length ? Object.keys(SearchResult) : [],
-    );
-  }, [SearchResult]);
-
-  useEffect(() => {
-    if (result) {
-      setSearchResult(convertResult(result));
-      setLawFilted(convertResult(result));
-      setChoosenKindLaw([0, 1, 2, 3]);
-    }
-  }, [result]);
 
   const animated = useRef(new Animated.Value(0)).current;
 
@@ -135,8 +105,6 @@ export function Detail1({}) {
     );
   }
 
-  // Tìm kiếm trên server theo khoảng ngày ký + cơ quan ban hành
-  // (kết hợp với từ khóa đang nhập nếu có), không phải lọc kết quả cũ.
   function searchWithFilter() {
     Keyboard.dismiss();
     const from = parseDateInput(fromDate, false);
@@ -148,6 +116,7 @@ export function Detail1({}) {
       dateFrom: from ? from.toISOString() : '',
       dateTo: to ? to.toISOString() : '',
       agencies: chosenAgencies,
+      lawTypes: choosenKindLaw,  // ← Thêm dòng này
     });
     setInputForNavi(keyword);
   }
@@ -155,7 +124,6 @@ export function Detail1({}) {
   function convertResult(info) {
     let lawObject = {};
     info.map((law, i) => {
-      // lawObject[i] = {[law._id]:{'lawNameDisplay':law.info['lawNameDisplay'],'lawDescription':law.info['lawDescription'],'lawDaySign':law.info['lawDaySign']}}
       lawObject[law._id] = {
         lawNameDisplay: law.info['lawNameDisplay'],
         lawDescription: law.info['lawDescription'],
@@ -166,56 +134,22 @@ export function Detail1({}) {
     return lawObject;
   }
 
-  function chooseDisplayKindLaw() {
-    // 0 là luật, 1 là nghị định, 2 là thông tư, 3 là khác
-    // (văn bản khác: không phải Luật/Bộ luật/Nghị định/Thông tư)
-
-    let newResult = {};
-
-    if (Object.keys(SearchResult).length && SearchResult['_id'] !== 'none') {
-      Object.keys(SearchResult).map((law, i) => {
-        const name = SearchResult[law]['lawNameDisplay'];
-        const isOther = !name.match(
-          new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
-        );
-
-        let show = false;
-        if (choosenKindLaw.includes(0) && name.match(/^(Luật|Bộ luật)/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(1) && name.match(/^Nghị định/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(2) && name.match(/^Thông tư/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(3) && isOther) {
-          show = true;
-        }
-
-        if (show) {
-          newResult[law] = SearchResult[law];
-        }
-      });
-
-      setLawFilted(newResult);
-      setChoosenLaw(Object.keys(newResult));
-    }
-  }
-
   function pressToSearch() {
     Keyboard.dismiss();
     setPaper(1);
     if (FlatListToScroll.current) {
       FlatListToScroll.current.scrollToOffset({ offset: 0 });
     }
-    Keyboard.dismiss();
     if (!input || input.match(/^(\s)*$/)) {
       setWanring(true);
     } else {
-      dispatch({ type: 'searchContent', input: input });
+      dispatch({ 
+        type: 'searchContent', 
+        input: input,
+        lawTypes: choosenKindLaw,  // ← Thêm dòng này
+      });
+      setInputForNavi(input);
     }
-    setInputForNavi(input);
   }
 
   useEffect(() => {
@@ -228,9 +162,14 @@ export function Detail1({}) {
     );
   }, [SearchResult]);
 
+  // Khi có kết quả search mới
   useEffect(() => {
-    chooseDisplayKindLaw();
-  }, [choosenKindLaw]);
+    if (result) {
+      setSearchResult(convertResult(result));
+      setLawFilted(convertResult(result));
+      // setChoosenKindLaw([0, 1, 2, 3]); // Reset checkbox sau search
+    }
+  }, [result]);
 
   const NoneOfResutl = () => {
     return (
@@ -243,7 +182,6 @@ export function Detail1({}) {
             height: '100%',
             alignItems: 'center',
             justifyContent: 'center',
-            // Căn giữa theo phần màn hình KHÔNG bị tab bar che
             paddingBottom: tabBarHeight,
             paddingLeft: 30,
             paddingRight: 30,
@@ -265,7 +203,6 @@ export function Detail1({}) {
   );
 
   const Item = memo(title => {
-    console.log(title);
     let detailId = title?.id?.item;
     let i = title?.id?.index;
 
@@ -273,7 +210,6 @@ export function Detail1({}) {
     let descriptionLaw = 'unknown name';
     if (result) {
       nameLaw = SearchResult[detailId]['lawNameDisplay'];
-
       descriptionLaw = SearchResult[detailId]['lawDescription'];
     }
     if (nameLaw) {
@@ -308,15 +244,13 @@ export function Detail1({}) {
           paddingBottom: 10,
           paddingTop: 10,
           justifyContent: 'center',
-          backgroundColor: i % 2 ? 'white' : '#DDDDDD', // #F9CC76
-          // marginBottom: 6,
+          backgroundColor: i % 2 ? 'white' : '#DDDDDD',
         }}
         onPress={() => {
           navigation.push(`accessLaw`, {
             screen: detailId,
             input: inputForNavi,
           });
-          // setName(i);
         }}
       >
         <View style={styles.item}>
@@ -371,11 +305,7 @@ export function Detail1({}) {
 
   function convertResultLoading(obj) {
     const first30Entries = Object.entries(obj).slice(0, paper * 30);
-    // console.log(first10Entries.length);
-
-    // Chuyển lại array thành object
     const first30Obj = Object.fromEntries(first30Entries);
-
     return first30Obj;
   }
 

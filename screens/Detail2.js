@@ -217,20 +217,6 @@ export function Detail2({}) {
 
   // Tìm kiếm trên server theo khoảng ngày ký + cơ quan ban hành
   // (kết hợp với từ khóa đang nhập nếu có), không phải lọc kết quả cũ.
-  function searchWithFilter() {
-    Keyboard.dismiss();
-    const from = parseDateInput(fromDate, false);
-    const to = parseDateInput(toDate, true);
-    const keyword = input || '';
-    dispatch({
-      type: 'searchLawDescription',
-      input: keyword,
-      dateFrom: from ? from.toISOString() : '',
-      dateTo: to ? to.toISOString() : '',
-      agencies: chosenAgencies,
-    });
-    setValueInput(keyword);
-  }
 
   async function storeLastedLaw() {
     await writeUserJson(LASTED_LAW_FILE, {
@@ -324,6 +310,7 @@ export function Detail2({}) {
       </View>
     );
   }
+  
   function convertResult(info) {
     let lawObject = {};
     info.map((law, i) => {
@@ -338,13 +325,13 @@ export function Detail2({}) {
     return lawObject;
   }
 
-  useEffect(() => {
-    if (info5) {
-      setSearchResult(convertResult(info5));
-      setLawFilted(convertResult(info5));
-      setChoosenKindLaw([0, 1, 2, 3]);
-    }
-  }, [info5]);
+  // useEffect(() => {
+  //   if (info5) {
+  //     setSearchResult(convertResult(info5));
+  //     setLawFilted(convertResult(info5));
+  //     setChoosenKindLaw([0, 1, 2, 3]);
+  //   }
+  // }, [info5]);
 
   useEffect(() => {
     setChoosenLaw(
@@ -358,9 +345,9 @@ export function Detail2({}) {
     setWanring(false);
   }, [input]);
 
-  useEffect(() => {
-    chooseDisplayKindLaw();
-  }, [choosenKindLaw]);
+  // useEffect(() => {
+  //   chooseDisplayKindLaw();
+  // }, [choosenKindLaw]);
 
   const netInfo = useNetInfo();
   let internetConnected = netInfo.isConnected;
@@ -418,46 +405,46 @@ export function Detail2({}) {
     });
   }, []);
 
-  function chooseDisplayKindLaw() {
-    // 0 là luật, 1 là nghị định, 2 là thông tư, 3 là khác
-    // (văn bản khác: không phải Luật/Bộ luật/Nghị định/Thông tư)
+  // function chooseDisplayKindLaw() {
+  //   // 0 là luật, 1 là nghị định, 2 là thông tư, 3 là khác
+  //   // (văn bản khác: không phải Luật/Bộ luật/Nghị định/Thông tư)
 
-    let newResult = {};
-    // console.log('SearchResult',SearchResult)
+  //   let newResult = {};
+  //   // console.log('SearchResult',SearchResult)
 
-    if (
-      SearchResult &&
-      Object.keys(SearchResult).length &&
-      SearchResult['_id'] !== 'none'
-    ) {
-      Object.keys(SearchResult).map((law, i) => {
-        const name = SearchResult[law]['lawNameDisplay'];
-        const isOther = !name.match(
-          new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
-        );
+  //   if (
+  //     SearchResult &&
+  //     Object.keys(SearchResult).length &&
+  //     SearchResult['_id'] !== 'none'
+  //   ) {
+  //     Object.keys(SearchResult).map((law, i) => {
+  //       const name = SearchResult[law]['lawNameDisplay'];
+  //       const isOther = !name.match(
+  //         new RegExp(`^(Luật|Bộ luật|Nghị định|Thông tư)`, 'img'),
+  //       );
 
-        let show = false;
-        if (choosenKindLaw.includes(0) && name.match(/^(Luật|Bộ luật)/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(1) && name.match(/^Nghị định/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(2) && name.match(/^Thông tư/im)) {
-          show = true;
-        }
-        if (choosenKindLaw.includes(3) && isOther) {
-          show = true;
-        }
+  //       let show = false;
+  //       if (choosenKindLaw.includes(0) && name.match(/^(Luật|Bộ luật)/im)) {
+  //         show = true;
+  //       }
+  //       if (choosenKindLaw.includes(1) && name.match(/^Nghị định/im)) {
+  //         show = true;
+  //       }
+  //       if (choosenKindLaw.includes(2) && name.match(/^Thông tư/im)) {
+  //         show = true;
+  //       }
+  //       if (choosenKindLaw.includes(3) && isOther) {
+  //         show = true;
+  //       }
 
-        if (show) {
-          newResult[law] = SearchResult[law];
-        }
-      });
-      setLawFilted(newResult);
-      setChoosenLaw(Object.keys(newResult));
-    }
-  }
+  //       if (show) {
+  //         newResult[law] = SearchResult[law];
+  //       }
+  //     });
+  //     setLawFilted(newResult);
+  //     setChoosenLaw(Object.keys(newResult));
+  //   }
+  // }
 
   const NoneOfResutl = () => {
     return (
@@ -557,7 +544,6 @@ export function Detail2({}) {
     loadSuggestIndex();
   }, []);
 
-
   // Lọc gợi ý (chạy sau debounce). Không phân biệt dấu/hoa-thường/phân cách.
   function runSuggest(text) {
     const q = normQuery(text);
@@ -597,25 +583,55 @@ export function Detail2({}) {
     if (suggestTimer.current) clearTimeout(suggestTimer.current);
   }
 
-  function pressToSearch() {
-    Keyboard.dismiss();
-    hideSuggest();
-    if (paper > 2) {
-      setPaper(0);
-    } else {
-      setPaper(1);
-    }
-    if (FlatListToScroll.current) {
-      FlatListToScroll.current.scrollToOffset({ offset: 0 });
-    }
-    if (!input || input.match(/^(\s)*$/) || input.match(/^\W+$/)) {
-      setWanring(true);
-    } else {
-      dispatch({ type: 'searchLawDescription', input: input });
-      setValueInput(input);
-    }
-    setChoosenKindLaw([0, 1, 2, 3]);
+function pressToSearch() {
+  Keyboard.dismiss();
+  hideSuggest();
+  if (paper > 2) {
+    setPaper(0);
+  } else {
+    setPaper(1);
   }
+  if (FlatListToScroll.current) {
+    FlatListToScroll.current.scrollToOffset({ offset: 0 });
+  }
+  if (!input || input.match(/^(\s)*$/) || input.match(/^\W+$/)) {
+    setWanring(true);
+  } else {
+    dispatch({
+      type: 'searchLawDescription',
+      input: input,
+      lawTypes: choosenKindLaw,
+    });
+    setValueInput(input);
+  }
+}
+function searchWithFilter() {
+  Keyboard.dismiss();
+  const from = parseDateInput(fromDate, false);
+  const to = parseDateInput(toDate, true);
+  const keyword = input || '';
+  dispatch({
+    type: 'searchLawDescription',
+    input: keyword,
+    dateFrom: from ? from.toISOString() : '',
+    dateTo: to ? to.toISOString() : '',
+    agencies: chosenAgencies,
+    lawTypes: choosenKindLaw,  // ← gửi bộ lọc loại văn bản khi filter
+  });
+  setValueInput(keyword);
+}
+
+// BỎ cái useEffect theo dõi choosenKindLaw
+// BỎ function chooseDisplayKindLaw() hoàn toàn
+
+// Giữ nguyên useEffect xử lý kết quả info5
+useEffect(() => {
+  if (info5) {
+    setSearchResult(convertResult(info5));
+    setLawFilted(convertResult(info5));
+  }
+}, [info5]);
+
 
   const renderItem = useCallback(
     data => (
@@ -783,8 +799,7 @@ export function Detail2({}) {
           zIndex: 0,
         }}
       >
-                         <ScreenToggle active="searchlaw" />
-
+        <ScreenToggle active="searchlaw" />
         <View style={{ ...styles.inputContainer, height: 52, top: 5 }}>
           <View style={{ ...styles.containerBtb, paddingTop: 5 }}>
             <TouchableOpacity
@@ -795,7 +810,7 @@ export function Detail2({}) {
                 opacity: loading ? 0.5 : 1,
               }}
               onPress={() => {
-                hideSuggest()
+                hideSuggest();
                 setShowFilter(true);
                 Keyboard.dismiss();
                 Animated.timing(animated, {
@@ -962,45 +977,46 @@ export function Detail2({}) {
             opacity: loading ? 0.5 : 1,
           }}
         >
-          {['Luật/Bộ Luật', 'Nghị định', 'Thông tư', 'Khác'].map((option, i) => {
-            return (
-              <TouchableOpacity
-                key={`${i}a`}
-                onPress={() => {
-                  if (choosenKindLaw.includes(i)) {
-                    setChoosenKindLaw(choosenKindLaw.filter(a => a !== i));
-                  } else {
-                    setChoosenKindLaw([...choosenKindLaw, i]);
-                  }
-                }}
-                style={{
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  flexDirection: 'row',
-                  // width:75
-                }}
-              >
-                <CheckBox
-                  onClick={() => {
+          {['Luật/Bộ Luật', 'Nghị định', 'Thông tư', 'Khác'].map(
+            (option, i) => {
+              return (
+                <TouchableOpacity
+                  key={`${i}a`}
+                  onPress={() => {
                     if (choosenKindLaw.includes(i)) {
                       setChoosenKindLaw(choosenKindLaw.filter(a => a !== i));
                     } else {
                       setChoosenKindLaw([...choosenKindLaw, i]);
                     }
-
-                    // chooseDisplayKindLaw()
                   }}
-                  isChecked={choosenKindLaw.includes(i)}
-                  style={{}}
-                  uncheckedCheckBoxColor={'white'}
-                  checkedCheckBoxColor={'white'}
-                />
-                <Text style={{ fontSize: 13, color: 'white' }}>{option}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  style={{
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    flexDirection: 'row',
+                    // width:75
+                  }}
+                >
+                  <CheckBox
+                    onClick={() => {
+                      if (choosenKindLaw.includes(i)) {
+                        setChoosenKindLaw(choosenKindLaw.filter(a => a !== i));
+                      } else {
+                        setChoosenKindLaw([...choosenKindLaw, i]);
+                      }
 
+                      // chooseDisplayKindLaw()
+                    }}
+                    isChecked={choosenKindLaw.includes(i)}
+                    style={{}}
+                    uncheckedCheckBoxColor={'white'}
+                    checkedCheckBoxColor={'white'}
+                  />
+                  <Text style={{ fontSize: 13, color: 'white' }}>{option}</Text>
+                </TouchableOpacity>
+              );
+            },
+          )}
+        </View>
       </View>
 
       <View
@@ -1155,7 +1171,10 @@ export function Detail2({}) {
               elevation: 4,
             }}
           >
-            <Ionicons name="arrow-up" style={{ color: 'white', fontSize: 26 }} />
+            <Ionicons
+              name="arrow-up"
+              style={{ color: 'white', fontSize: 26 }}
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -1428,25 +1447,26 @@ export function Detail2({}) {
              định vị ngay dưới ô input theo toạ độ đo được (anchor). ── */}
       {showSuggest && suggestions.length > 0 && anchor && (
         <>
-          {/* Backdrop phủ vùng kết quả phía sau -> tap vào đó ẩn CẢ dropdown
-              lẫn bàn phím */}
-          <TouchableWithoutFeedback
-            onPress={() => {
-              hideSuggest();
-              Keyboard.dismiss();
-            }}
-          >
-            <View
-              style={{
-                position: 'absolute',
-                top: anchor.y + anchor.h,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 9998,
-              }}
-            />
-          </TouchableWithoutFeedback>
+ {[
+      // phía trên input
+      { top: 0, left: 0, right: 0, height: anchor.y },
+      // phía dưới input
+      { top: anchor.y + anchor.h, left: 0, right: 0, bottom: 0 },
+      // bên trái input (nút lọc)
+      { top: anchor.y, left: 0, width: anchor.x, height: anchor.h },
+      // bên phải input (nút tìm)
+      { top: anchor.y, left: anchor.x + anchor.w, right: 0, height: anchor.h },
+    ].map((pos, idx) => (
+      <TouchableWithoutFeedback
+        key={idx}
+        onPress={() => {
+          hideSuggest();
+          Keyboard.dismiss();
+        }}
+      >
+        <View style={{ position: 'absolute', zIndex: 9998, ...pos }} />
+      </TouchableWithoutFeedback>
+    ))}
           <View
             style={{
               position: 'absolute',

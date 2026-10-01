@@ -67,6 +67,19 @@ async function saveBookmarksFile(screen, listBookmark) {
   await writeUserJson(BOOKMARKS_FILE, all);
 }
 
+// Định dạng ngày dd/mm/yyyy; ngày rỗng/sai -> '' (Intl.format ném RangeError
+// với Invalid Date nên phải kiểm tra trước).
+function formatDateVN(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d);
+}
+
 /* ------------------------------------------------------------------ */
 /* Panel trượt bên phải: Mục lục (article) HOẶC danh sách Ghi nhớ.     */
 /* Tách riêng để state gõ-tìm (inputSearchArtical) và ghi-nhớ chỉ      */
@@ -79,34 +92,17 @@ function SidePanel({
   Opacity,
   widthDevice,
   insets,
-  screen,
   onClose, // đóng panel (có animation)
   onSelect, // (yArray) => cuộn tới vị trí
+  bookmarks, // <-- mới
+  onToggleBookmark, // <-- mới
+  inputSearchArtical,
+  setInputSearchArtical,
 }) {
   // Chiều cao thanh chức năng để panel dừng đúng phía trên nó.
   const functionTabHeight = FUNCTION_TAB_CONTENT_HEIGHT + useBottomBarInset();
-  const [inputSearchArtical, setInputSearchArtical] = useState('');
-  const [bookmarks, setBookmarks] = useState([]);
-  const bookmarksRef = useRef([]);
+  // const [inputSearchArtical, setInputSearchArtical] = useState('');
   const textInputArticle = useRef(null);
-
-  useEffect(() => {
-    loadBookmarksFile(screen).then(listBookmark => {
-      bookmarksRef.current = listBookmark;
-      setBookmarks(listBookmark);
-    });
-  }, [screen]);
-
-  function toggleBookmark(title) {
-    const cur = bookmarksRef.current;
-    const next = cur.includes(title)
-      ? cur.filter(t => t !== title)
-      : [...cur, title];
-    bookmarksRef.current = next;
-    setBookmarks(next);
-    saveBookmarksFile(screen, next);
-    Vibration.vibrate(20);
-  }
 
   const SearchArticalResult = positions.filter(item => {
     let abc = inputSearchArtical;
@@ -139,7 +135,7 @@ function SidePanel({
           <Text style={styles.listItemText}>{title}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => toggleBookmark(title)}
+          onPress={() => onToggleBookmark(title)}
           style={{
             paddingLeft: 4,
             paddingRight: 10,
@@ -197,58 +193,77 @@ function SidePanel({
             flexDirection: 'row',
             backgroundColor: 'black',
             height: 50,
+            justifyContent: 'center',
           }}
         >
-          <TextInput
-            ref={textInputArticle}
-            onChangeText={text => setInputSearchArtical(text)}
-            selectTextOnFocus={true}
-            value={inputSearchArtical}
-            style={{
-              paddingLeft: 10,
-              paddingRight: 10,
-              color: 'white',
-              width: '85%',
-              alignItems: 'center',
-            }}
-            placeholder=" Nhập từ điều luật ..."
-            placeholderTextColor={'gray'}
-          ></TextInput>
-          <TouchableOpacity
-            onPress={() => {
-              setInputSearchArtical('');
-              textInputArticle.current.focus();
-            }}
-            style={{
-              width: '15%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {inputSearchArtical && (
-              <Text
+          {mode === 'article' ? (
+            <>
+              <TextInput
+                ref={textInputArticle}
+                onChangeText={text => setInputSearchArtical(text)}
+                selectTextOnFocus={true}
+                value={inputSearchArtical}
                 style={{
-                  height: 20,
-                  width: 20,
+                  paddingLeft: 10,
+                  paddingRight: 10,
                   color: 'white',
-                  textAlign: 'center',
-                  verticalAlign: 'middle',
-                  backgroundColor: 'gray',
-                  borderRadius: 25,
+                  width: '85%',
+                  alignItems: 'center',
+                }}
+                placeholder=" Nhập từ điều luật ..."
+                placeholderTextColor={'gray'}
+              ></TextInput>
+              <TouchableOpacity
+                onPress={() => {
+                  setInputSearchArtical('');
+                  textInputArticle.current.focus();
+                }}
+                style={{
+                  width: '15%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                X
-              </Text>
-            )}
-          </TouchableOpacity>
+                {inputSearchArtical && (
+                  <Text
+                    style={{
+                      height: 20,
+                      width: 20,
+                      color: 'white',
+                      textAlign: 'center',
+                      verticalAlign: 'middle',
+                      backgroundColor: 'gray',
+                      borderRadius: 25,
+                    }}
+                  >
+                    X
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text
+              style={{
+                textAlign: 'center',
+                padding: 10,
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: 20,
+                fontFamily: 'Inter-Bold',
+              }}
+            >
+              Danh sách ghi nhớ
+            </Text>
+          )}
         </View>
+
         <FlatList
           style={{ flex: 1 }}
           data={dataList}
           keyExtractor={(item, i) => `${i}SearchArtical`}
           keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={<View style={{ height: 7 }} />}
+          // ListHeaderComponent={<View style={{ height: 7 }} />}
           renderItem={renderItem}
           initialNumToRender={15}
           maxToRenderPerBatch={12}
@@ -271,7 +286,6 @@ export function Detail5() {
 
   const currentYRef = useRef(0); // vị trí scroll hiện tại; chỉ đọc trong callback đo -> dùng ref để KHÔNG re-render mỗi khung hình cuộn
 
-
   const [currentSearchPoint, setCurrentSearchPoint] = useState(1); // thứ tự kết quả search đang trỏ tới
 
   const [modalStatus, setModalStatus] = useState(false);
@@ -287,6 +301,8 @@ export function Detail5() {
 
   const [panelMode, setPanelMode] = useState('article'); // 'article' | 'bookmark'
 
+  const [inputSearchArtical, setInputSearchArtical] = useState('');
+
   const dispatch = useDispatch();
 
   const route = useRoute();
@@ -296,6 +312,40 @@ export function Detail5() {
   const netInfo = useNetInfo();
   let internetConnected = netInfo.isConnected;
 
+  const [bookmarks, setBookmarks] = useState([]);
+  const bookmarksRef = useRef([]);
+
+  useEffect(() => {
+    loadBookmarksFile(route.params.screen).then(list => {
+      bookmarksRef.current = list;
+      setBookmarks(list);
+    });
+  }, [route.params.screen]);
+
+  function toggleBookmark(title) {
+    const cur = bookmarksRef.current;
+    const next = cur.includes(title)
+      ? cur.filter(t => t !== title)
+      : [...cur, title];
+    bookmarksRef.current = next;
+    setBookmarks(next);
+    saveBookmarksFile(route.params.screen, next);
+    Vibration.vibrate(20);
+  }
+
+  // nút sao dùng chung cho a / b / c
+  const renderStarForEndClause = title => {
+    const isMarked = bookmarks.includes(title);
+    return (
+      <Text onPress={() => toggleBookmark(title)}>
+        {'\u00A0\u00A0'}
+        <Ionicons
+          name={isMarked ? 'star' : 'star-outline'}
+          style={{ fontSize: 15, color: isMarked ? '#FFB300' : 'gray' }}
+        />
+      </Text>
+    );
+  };
   async function StoreInternal() {
     // Đọc kèm giá trị mặc định: nếu một trong hai file bị mất hoặc hỏng thì
     // dựng lại từ đầu thay vì ném lỗi (trước đây order.txt được đọc thẳng,
@@ -418,12 +468,10 @@ export function Detail5() {
       setCurrentSearchPoint(1);
     }
   }
-  // const ModalVisibleStatus = useContext(ModalStatus);
 
   const { loading } = useSelector(state => state['read']);
   // console.log('loading',loading);
 
-  // const {info3} = useSelector(state => state['stackscreen']);
 
   async function callOneLaw() {
     // dùng để khi qua screen related Law khác khi quay về vẫn còn
@@ -446,9 +494,7 @@ export function Detail5() {
   useEffect(() => {
     callOneLaw().then(res => {
       setContent(res.content);
-      setInfo(res.info);
-      // setContent([]);
-      // setInfo([]);
+      setInfo(res.info || {});
     });
   }, [loading]);
 
@@ -467,7 +513,7 @@ export function Detail5() {
       // console.log('cont',cont);
 
       if (cont && Object.keys(cont.all).includes(route.params.screen)) {
-        setInfo(cont.all[route.params.screen].Info);
+        setInfo(cont.all[route.params.screen].Info || {});
         setContent(cont.all[route.params.screen].Content);
       } else {
         setExists(true);
@@ -789,7 +835,6 @@ export function Detail5() {
     }
   }, [currentSearchPoint]);
 
-
   let transY = animatedForNavi.interpolate({
     inputRange: [-100, 0, 80, 90, 100],
     outputRange: [
@@ -964,7 +1009,9 @@ export function Detail5() {
 
   // khoản này có đang được chọn không
   function isClauseSelected(dieuId, idx) {
-    return selectedDieuId === dieuId && selectedClauses.some(c => c.idx === idx);
+    return (
+      selectedDieuId === dieuId && selectedClauses.some(c => c.idx === idx)
+    );
   }
 
   // điều này có đang được chọn không (có ít nhất 1 khoản được chọn)
@@ -1011,8 +1058,6 @@ export function Detail5() {
               <Animated.View
                 style={{
                   paddingVertical: 4,
-                  // opacity: fadeAnimation,
-                  // borderRadius: 4,
                 }}
                 onLayout={event =>
                   measureArticle(event.target, Object.keys(key2)[0])
@@ -1024,13 +1069,14 @@ export function Detail5() {
                     onPress={() => pressDieu(dieuId, title, clauses)}
                   >
                     <Text
-                      selectable={true}
+                      // selectable={true}
                       style={[
                         styles.dieu,
                         isDieuSelected(dieuId) ? styles.copiedBg : null,
                       ]}
                     >
                       {highlight(Object.keys(key2), valueInput, true)}
+                      {renderStarForEndClause(title)}
                     </Text>
                   </Pressable>
                 )}
@@ -1084,7 +1130,7 @@ export function Detail5() {
                   }}
                 >
                   <Text
-                    selectable={true}
+                    // selectable={true}
                     style={{
                       fontSize: 14,
                       color: 'white',
@@ -1132,13 +1178,14 @@ export function Detail5() {
                           onPress={() => pressDieu(bDieuId, bTitle, bClauses)}
                         >
                           <Text
-                            selectable={true}
+                            // selectable={true}
                             style={[
                               styles.dieu,
                               isDieuSelected(bDieuId) ? styles.copiedBg : null,
                             ]}
                           >
                             {highlight(Object.keys(keyC), valueInput, true)}
+                            {renderStarForEndClause(bTitle)}
                           </Text>
                         </Pressable>
                         {renderClauses(bClauses, bTitle, bDieuId)}
@@ -1166,11 +1213,7 @@ export function Detail5() {
       <View key={`${i}c`}>
         <View key={`${i}cInner`}>
           <Animated.View
-            style={{
-              paddingVertical: 4,
-              // opacity: fadeAnimation,
-              // borderRadius: 4,
-            }}
+            style={{ paddingVertical: 4 }}
             onLayout={event => measureArticle(event.target, ObjKeys)}
           >
             <Pressable
@@ -1178,15 +1221,17 @@ export function Detail5() {
               onPress={() => pressDieu(dieuId, title, clauses)}
             >
               <Text
-                selectable={true}
+                // selectable={true}
                 style={[
                   styles.dieu,
                   isDieuSelected(dieuId) ? styles.copiedBg : null,
                 ]}
               >
                 {highlight([ObjKeys], valueInput, true)}
+                {renderStarForEndClause(title)}
               </Text>
             </Pressable>
+
             {renderClauses(clauses, title, dieuId)}
           </Animated.View>
         </View>
@@ -1195,49 +1240,6 @@ export function Detail5() {
       <View key={`${i}c1`}></View>
     );
   };
-
-  // const d = (key, i, ObjKeys) => {
-  //   // cho hướng dẫn Công văn của VKS, TANDTC
-  //   console.log('d');
-  //   const title = Object.keys(key)[0];
-  //   const content = Object.values(key)[0];
-  //   const fullText = `${title}\n${content}`; // hoặc `${title}: ${content}`
-  //   console.log('tile', title);
-
-  //   return Object.keys(key)[0] != '0' ? (
-  //     <Pressable
-  //       key={`${i}c`}
-  //       onLongPress={() => {
-  //         Clipboard.setString(fullText);
-  //         console.log('Copied:', fullText);
-  //         setCopied(title);
-  //         showToast();
-  //         Vibration.vibrate(20);
-  //       }}
-  //     >
-  //       <Animated.View
-  //         style={{
-  //           paddingVertical: 4,
-  //           backgroundColor: copied == title ? '#d1daa8ff' : 'transparent',
-  //         }}
-  //         onLayout={event => {
-  //           event.target.measure((x, y, width, height, pageX, pageY) => {
-  //             setPositionYArtical({
-  //               y: y + pageY,
-  //               key3: ObjKeys,
-  //             });
-  //           });
-  //         }}
-  //       >
-  //         <Text style={styles.lines}>
-  //         {highlight([fullText], valueInput, false)}
-  //         </Text>
-  //       </Animated.View>
-  //     </Pressable>
-  //   ) : (
-  //     <View key={`${i}c1`}></View>
-  //   );
-  // };
 
   return (
     <View style={{ flex: 1, position: 'relative' }}>
@@ -1409,8 +1411,9 @@ export function Detail5() {
                               </Text>
                             </TouchableOpacity>
                           )}
-                          {Object.keys(key)[0].match(/^phần\s+(thứ|[ivx]|\d).*/gim) ||
-                          Object.keys(key)[0].match(/^(A|B|C|D|E|F|G|H)\./)
+                          {Object.keys(key)[0].match(
+                            /^phần\s+(thứ|[ivx]|\d).*/gim,
+                          ) || Object.keys(key)[0].match(/^(A|B|C|D|E|F|G|H)\./)
                             ? b(key, i, Object.keys(key)[0])
                             : Object.keys(key)[0].match(
                                 /(^chương .*|^(V|I|X)*\.)/gim,
@@ -1428,13 +1431,16 @@ export function Detail5() {
           <>
             {showArticle && (
               <SidePanel
+                inputSearchArtical={inputSearchArtical}
+                setInputSearchArtical={setInputSearchArtical}
                 mode={panelMode}
                 positions={positionYArrArtical}
                 transX={transX}
                 Opacity={Opacity}
                 widthDevice={widthDevice}
                 insets={insets}
-                screen={route.params.screen}
+                bookmarks={bookmarks}
+                onToggleBookmark={toggleBookmark}
                 onClose={() => {
                   Keyboard.dismiss();
                   setTimeout(() => {
@@ -1624,7 +1630,9 @@ export function Detail5() {
             >
               <Ionicons
                 name={
-                  showArticle && panelMode === 'bookmark' ? 'star' : 'star-outline'
+                  showArticle && panelMode === 'bookmark'
+                    ? 'star'
+                    : 'star-outline'
                 }
                 style={
                   showArticle && panelMode === 'bookmark'
@@ -2030,10 +2038,7 @@ export function Detail5() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.ModalInfoContent}>
-                        {Info &&
-                          new Date(Info['lawDaySign']).toLocaleDateString(
-                            'vi-VN',
-                          )}
+                        {formatDateVN(Info?.lawDaySign)}
                       </Text>
                     </View>
                   </View>
@@ -2046,10 +2051,7 @@ export function Detail5() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.ModalInfoContent}>
-                          {Info &&
-                            new Date(Info['lawDayActive']).toLocaleDateString(
-                              'vi-VN',
-                            )}
+                          {formatDateVN(Info?.lawDayActive)}
                         </Text>
                       </View>
                     </View>

@@ -69,6 +69,7 @@ function buildAgencyCondition(agencies) {
   };
 }
 
+
 export const searchLawDescription = onRequest(async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json([]);
@@ -100,6 +101,10 @@ export const searchLawDescription = onRequest(async (req, res) => {
     const agencyCond = buildAgencyCondition(req.body.agencies);
     if (agencyCond) conditions.push(agencyCond);
 
+    // ← Thêm filter loại văn bản
+    const lawTypeCond = buildLawTypeCondition(req.body.lawTypes);
+    if (lawTypeCond) conditions.push(lawTypeCond);
+
     const query = conditions.length ? { $and: conditions } : {};
 
     const result = await LawContent.find(query)
@@ -116,6 +121,46 @@ export const searchLawDescription = onRequest(async (req, res) => {
   }
 });
 
+// ← Thêm hàm này
+function buildLawTypeCondition(lawTypes) {
+  if (!Array.isArray(lawTypes)) {
+    return null; // Không gửi lawTypes -> không filter
+  }
+
+  // Bỏ chọn cả 4 loại -> không trả văn bản nào (giống lọc phía client cũ)
+  if (lawTypes.length === 0) {
+    return { _id: { $in: [] } };
+  }
+
+  // Nếu chọn tất cả 4 loại, không cần filter
+  if (lawTypes.length === 4) {
+    return null;
+  }
+
+  const patterns = [];
+
+  if (lawTypes.includes(0)) {
+    patterns.push(/^(Luật|Bộ luật)/i);
+  }
+  if (lawTypes.includes(1)) {
+    patterns.push(/^Nghị định/i);
+  }
+  if (lawTypes.includes(2)) {
+    patterns.push(/^Thông tư/i);
+  }
+  if (lawTypes.includes(3)) {
+    // Loại "Khác" - không match 3 loại trên
+    patterns.push(/^(?!(Luật|Bộ luật|Nghị định|Thông tư))/i);
+  }
+
+  // Tạo $or điều kiện: match một trong các pattern
+  return {
+    $or: patterns.map(pattern => ({
+      'info.lawNameDisplay': pattern,
+    })),
+  };
+}
+
 export const countAllLaw = onRequest(async (req, res) => {
   if (req.method === 'POST') {
     try {
@@ -129,6 +174,7 @@ export const countAllLaw = onRequest(async (req, res) => {
     }
   }
 });
+
 
 export const searchContent = onRequest(async (req, res) => {
   if (req.method !== 'POST') {
@@ -151,6 +197,10 @@ export const searchContent = onRequest(async (req, res) => {
 
     const agencyCond = buildAgencyCondition(req.body.agencies);
     if (agencyCond) conditions.push(agencyCond);
+
+    // ← Thêm filter loại văn bản
+    const lawTypeCond = buildLawTypeCondition(req.body.lawTypes);
+    if (lawTypeCond) conditions.push(lawTypeCond);
 
     const query = conditions.length ? { $and: conditions } : {};
 

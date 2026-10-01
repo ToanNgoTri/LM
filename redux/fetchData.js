@@ -1,59 +1,56 @@
-import { createSlice } from '@reduxjs/toolkit'
-import {combineReducers} from 'redux'
+import { createSlice } from '@reduxjs/toolkit';
+import { combineReducers } from 'redux';
 // import {call,put,takeEvery} from 'redux-saga'
 // import dataOrg from '../data/data.json';       ////////////////////////////////////////////// xài tạm
-import { call,put,takeEvery,take,takeLatest } from 'redux-saga/effects';
+import { call, put, takeEvery, take, takeLatest } from 'redux-saga/effects';
 // import { Dirs, FileSystem } from 'react-native-file-access';
 
-
 export const read = createSlice({
-  name: 'read',     
+  name: 'read',
   initialState: {
-    content:[],
-    info:{},
-    loading: false
+    content: [],
+    info: {},
+    loading: false,
   },
   reducers: {
-    
-    loader: (state,action) => {
-      state.loading= true;
-      state.content=[];
-      state.info={};
+    loader: (state, action) => {
+      state.loading = true;
+      state.content = [];
+      state.info = {};
     },
 
-    handle: (state,action) => {
-      state.content=action.payload;
-      state.loading= false;
+    handle: (state, action) => {
+      state.content = action.payload;
+      state.loading = false;
     },
 
-    noLoading: (state,action) => {
-      state.loading= false;
+    noLoading: (state, action) => {
+      state.loading = false;
     },
-
-}
-})
+  },
+});
 
 export const searchContent = createSlice({
-  name: 'searchContent',     
+  name: 'searchContent',
   initialState: {
-    data1:{},
+    data1: {},
     loading1: false,
-    result:false
+    result: false,
   },
   reducers: {
-    loader1: (state,action) => {
-      state.loading1= true;
+    loader1: (state, action) => {
+      state.loading1 = true;
     },
 
-    handle1: (state,action) => {
-      state.result=action.payload;
-      state.loading1= false;
+    handle1: (state, action) => {
+      state.result = action.payload;
+      state.loading1 = false;
     },
-}
-})
+  },
+});
 
 // export const searchLaw = createSlice({
-//   name: 'searchLaw',     
+//   name: 'searchLaw',
 //   initialState: {
 //     loading2: false,
 //     input2:'',
@@ -71,44 +68,41 @@ export const searchContent = createSlice({
 // }
 // })
 
-
-
 export const getlastedlaws = createSlice({
-  name: 'getlastedlaws',     
+  name: 'getlastedlaws',
   initialState: {
     loading3: false,
-    info3:[],
+    info3: [],
   },
   reducers: {
-    loader3: (state,action) => {
-      state.loading3= true;
+    loader3: (state, action) => {
+      state.loading3 = true;
     },
 
-    handle3: (state,action) => {
-      state.info3=action.payload.b;
-      state.loading3= false;
+    handle3: (state, action) => {
+      state.info3 = action.payload.b;
+      state.loading3 = false;
     },
-}
-})
+  },
+});
 
 export const getCountLaw = createSlice({
-  name: 'getCountLaw',     
+  name: 'getCountLaw',
   initialState: {
     loading4: false,
-    result4:0,
+    result4: 0,
   },
   reducers: {
-    loader4: (state,action) => {
-      state.loading4= true;
+    loader4: (state, action) => {
+      state.loading4 = true;
     },
 
-    handle4: (state,action) => {
-      state.result4=action.payload.b;
-      state.loading4= false;
+    handle4: (state, action) => {
+      state.result4 = action.payload.b;
+      state.loading4 = false;
     },
-}
-})
-
+  },
+});
 
 // Lưu trạng thái bộ lọc RIÊNG cho từng màn (searchLaw = Detail2, search = Detail1)
 // để không bị mất khi điều hướng (remount) qua lại, và hai màn độc lập nhau.
@@ -116,8 +110,20 @@ export const filterUI = createSlice({
   name: 'filterUI',
   initialState: {
     // valueInput: từ khóa đã áp dụng để bôi vàng (highlight) kết quả
-    searchLaw: { input: '', dateFrom: '', dateTo: '', agencies: [], valueInput: '' },
-    search: { input: '', dateFrom: '', dateTo: '', agencies: [], valueInput: '' },
+    searchLaw: {
+      input: '',
+      dateFrom: '',
+      dateTo: '',
+      agencies: [],
+      valueInput: '',
+    },
+    search: {
+      input: '',
+      dateFrom: '',
+      dateTo: '',
+      agencies: [],
+      valueInput: '',
+    },
   },
   reducers: {
     setFilterUI: (state, action) => {
@@ -131,217 +137,144 @@ export const searchLawDescription = createSlice({
   name: 'searchLawDescription',
   initialState: {
     loading5: false,
-    input5:'',
-    info5:null,
+    input5: '',
+    info5: null,
   },
   reducers: {
-    loader5: (state,action) => {
-      state.loading5= true;
+    loader5: (state, action) => {
+      state.loading5 = true;
     },
 
-    handle5: (state,action) => {
-      state.info5=action.payload.b;
-      state.loading5= false;
+    handle5: (state, action) => {
+      state.info5 = action.payload.b;
+      state.loading5 = false;
     },
-}
-})
+  },
+});
 
-
-export function* mySaga(state,action){
-  
+export function* mySaga(action){  // ← Thay state
   try{
     yield put(loader())
-
     let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/callOneLaw`,{
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
-      body:JSON.stringify({screen:state.lawName})
+      body:JSON.stringify({screen:action.lawName})
     })
-
     let a = yield info.json()
-
-
-
     yield put(handle(a))
-    
-
-  }catch(e){
-
-  }
+  }catch(e){}
 }
 
-export function* mySaga1(state,action){
+export function* mySaga1(action){  // ← Thay state
   try{
     yield put(loader1())
-
-    
-    let info = yield  fetch(`https://us-central1-project2-197c0.cloudfunctions.net/searchContent`,{
+    let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/searchContent`,{
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
       body:JSON.stringify({
-        input:state.input,
-        dateFrom:state.dateFrom,
-        dateTo:state.dateTo,
-        agencies:state.agencies,
+        input: action.input,
+        dateFrom: action.dateFrom,
+        dateTo: action.dateTo,
+        agencies: action.agencies,
+        lawTypes: action.lawTypes,
       })
     })
-
-
     let b = yield info.json()
-
-
-yield put(handle1(b))
+    yield put(handle1(b))
   }catch(e){
     yield put(handle1([]))
   }
 }
 
-// export function* mySaga2(state,action){
-//   try{
-        
-//     yield put(loader2())
-    
-
-//     let info = yield  fetch(`https://us-central1-project2-197c0.cloudfunctions.net/searchLaw`,{
-//     // let info = yield  fetch(`http://192.168.1.10:5001/project2-197c0/us-central1/searchLaw`,{
-//       method: 'POST',
-//       headers: {
-//         Accept: 'application/json',
-//         'Content-Type': 'application/json',
-//       },
-//       body:JSON.stringify({input:state.input})
-//     })
-
-//     let b = yield info.json()
-
-
-//     yield put(handle2({b}))
-//   }catch(e){
-//   }
-// }
-
-
-  export function* mySaga3(state,action){
-    try{
+export function* mySaga3(action){  // ← Thay state
+  try{
     yield put(loader3())
+    let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/getlastedlaws`,{
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+    let b = yield info.json()
+    yield put(handle3({b}))
+  }catch(e){
+    yield put(handle3({b:[]}))
+  }
+}
 
+export function* mySaga4(action){  // ← Thay state
+  try{
+    yield put(loader4())
+    let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/countAllLaw`,{
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+    let b = yield info.json()
+    yield put(handle4({b}))
+  }catch(e){}
+}
 
-      let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/getlastedlaws`,{
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        // body:JSON.stringify({screen:1})
+export function* mySaga5(action){  // ← Thay state
+  try{
+    yield put(loader5())
+    let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/searchLawDescription`,{
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body:JSON.stringify({
+        input: action.input,
+        dateFrom: action.dateFrom,
+        dateTo: action.dateTo,
+        agencies: action.agencies,
+        lawTypes: action.lawTypes,
       })
+    })
+    let b = yield info.json()
+    yield put(handle5({b}))
+  }catch(e){
+    yield put(handle5({b:[]}))
+  }
+}
 
-      let b = yield info.json()
-
-
-      yield put(handle3({b}))
-    }catch(e){
-      yield put(handle3({b:[]}))
-    }
-    }
-
-
-    export function* mySaga4(state,action){
-      try{
-      yield put(loader4())
-
-
-        let info = yield fetch(`https://us-central1-project2-197c0.cloudfunctions.net/countAllLaw`,{
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          // body:JSON.stringify({screen:1})
-        })
-
-        let b = yield info.json()
-
-
-        yield put(handle4({b}))
-      }catch(e){
-      }
-    }
-  
-  
-      export function* mySaga5(state,action){
-        try{
-              
-          yield put(loader5())
-          
-      
-          let info = yield  fetch(`https://us-central1-project2-197c0.cloudfunctions.net/searchLawDescription`,{
-          // let info = yield  fetch(`http://192.168.1.10:5001/project2-197c0/us-central1/searchLaw`,{
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body:JSON.stringify({
-              input:state.input,
-              dateFrom:state.dateFrom,
-              dateTo:state.dateTo,
-              agencies:state.agencies,
-            })
-          })
-      
-          let b = yield info.json()
-
-
-          yield put(handle5({b}))
-        }catch(e){
-          yield put(handle5({b:[]}))
-        }
-      }
-
-      
-export function* saga(){
-  yield takeEvery('read',mySaga) 
+export function* saga() {
+  yield takeEvery('read', mySaga);
   // yield takeEvery(handle.type,mySaga)    //xài cái này cũng được
-
 }
 
-export function* saga1(){
-  yield takeEvery('searchContent',mySaga1)
+export function* saga1() {
+  yield takeEvery('searchContent', mySaga1);
   // yield takeEvery(handle1.type,mySaga1)
-
-}
-
-export function* saga2(){
-  yield takeEvery('searchLaw',mySaga2)
-
 }
 
 
-export function* saga3(){
-  yield takeEvery('getlastedlaws',mySaga3)
-
+export function* saga3() {
+  yield takeEvery('getlastedlaws', mySaga3);
 }
 
-export function* saga4(){
-  yield takeEvery('getCountLaw',mySaga4)
-
+export function* saga4() {
+  yield takeEvery('getCountLaw', mySaga4);
 }
 
-export function* saga5(){
-  yield takeEvery('searchLawDescription',mySaga5)
-
+export function* saga5() {
+  yield takeEvery('searchLawDescription', mySaga5);
 }
 
-export const {loader,handle,noLoading} = read.actions;
-export const {loader1,handle1} = searchContent.actions;
+export const { loader, handle, noLoading } = read.actions;
+export const { loader1, handle1 } = searchContent.actions;
 // export const {loader2,handle2} = searchLaw.actions;
-export const {loader3,handle3} = getlastedlaws.actions;
-export const {loader4,handle4} = getCountLaw.actions;
-export const {loader5,handle5} = searchLawDescription.actions;
-export const {setFilterUI} = filterUI.actions;
+export const { loader3, handle3 } = getlastedlaws.actions;
+export const { loader4, handle4 } = getCountLaw.actions;
+export const { loader5, handle5 } = searchLawDescription.actions;
+export const { setFilterUI } = filterUI.actions;
