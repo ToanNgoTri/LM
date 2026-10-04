@@ -336,6 +336,16 @@ export function Detail5() {
   const [showFontPanel, setShowFontPanel] = useState(false);
   const lineHeight = Math.round((fontSize * 23) / FONT_DEFAULT);
   const dieuLineHeight = Math.round((fontSize * 22) / FONT_DEFAULT);
+  // Modal "Thông tin chi tiết" theo cùng cỡ chữ với nội dung (mặc định 14:
+  // tiêu đề 15, nội dung 14, như trước khi có chỉnh cỡ chữ).
+  const modalStyles = {
+    ModalInfoTitle: { ...styles.ModalInfoTitle, fontSize: fontSize + 1 },
+    ModalInfoContent: { ...styles.ModalInfoContent, fontSize },
+    ModalInfoContentLawRelated: {
+      ...styles.ModalInfoContentLawRelated,
+      fontSize,
+    },
+  };
 
   useEffect(() => {
     loadFontSize().then(setFontSize);
@@ -2256,7 +2266,7 @@ export function Detail5() {
                   <Text
                     style={{
                       textAlign: 'center',
-                      fontSize: 23,
+                      fontSize: Math.round((fontSize * 23) / FONT_DEFAULT),
                       fontWeight: 'bold',
                       color: 'black',
                     }}
@@ -2280,24 +2290,24 @@ export function Detail5() {
                     style={{ ...styles.ModalInfoContainer, borderTopWidth: 2 }}
                   >
                     <View style={{ width: '40%', justifyContent: 'center' }}>
-                      <Text style={styles.ModalInfoTitle}>Tên gọi:</Text>
+                      <Text style={modalStyles.ModalInfoTitle}>Tên gọi:</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ ...styles.ModalInfoContent }}>
+                      <Text style={{ ...modalStyles.ModalInfoContent }}>
                         {Info && Info['lawNameDisplay']}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%', justifyContent: 'center' }}>
-                      <Text style={styles.ModalInfoTitle}>
+                      <Text style={modalStyles.ModalInfoTitle}>
                         Trích yếu nội dung:
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text
                         style={{
-                          ...styles.ModalInfoContent,
+                          ...modalStyles.ModalInfoContent,
                           textAlign: 'justify',
                         }}
                       >
@@ -2307,10 +2317,10 @@ export function Detail5() {
                   </View>
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={styles.ModalInfoTitle}>Ngày ký:</Text>
+                      <Text style={modalStyles.ModalInfoTitle}>Ngày ký:</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.ModalInfoContent}>
+                      <Text style={modalStyles.ModalInfoContent}>
                         {formatDateVN(Info?.lawDaySign)}
                       </Text>
                     </View>
@@ -2318,12 +2328,12 @@ export function Detail5() {
                   {Info['lawDayActive'] && (
                     <View style={styles.ModalInfoContainer}>
                       <View style={{ width: '40%' }}>
-                        <Text style={styles.ModalInfoTitle}>
+                        <Text style={modalStyles.ModalInfoTitle}>
                           Ngày có hiệu lực:
                         </Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.ModalInfoContent}>
+                        <Text style={modalStyles.ModalInfoContent}>
                           {formatDateVN(Info?.lawDayActive)}
                         </Text>
                       </View>
@@ -2333,10 +2343,10 @@ export function Detail5() {
                   {Info['lawNumber'] && (
                     <View style={styles.ModalInfoContainer}>
                       <View style={{ width: '40%' }}>
-                        <Text style={styles.ModalInfoTitle}>Số văn bản:</Text>
+                        <Text style={modalStyles.ModalInfoTitle}>Số văn bản:</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.ModalInfoContent}>
+                        <Text style={modalStyles.ModalInfoContent}>
                           {Info && !Info['lawNumber'].match(/^0001\\HP/gim)
                             ? Info['lawNumber']
                             : ''}
@@ -2347,13 +2357,13 @@ export function Detail5() {
 
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={styles.ModalInfoTitle}>Tên người ký:</Text>
+                      <Text style={modalStyles.ModalInfoTitle}>Tên người ký:</Text>
                     </View>
                     <View
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['nameSign']) ? (
-                        <Text style={styles.ModalInfoContent}>
+                        <Text style={modalStyles.ModalInfoContent}>
                           {Info['nameSign']}
                         </Text>
                       ) : (
@@ -2361,7 +2371,7 @@ export function Detail5() {
                         Info['nameSign'].map((key, i) => (
                           <View key={`${i}nameSign`}>
                             <Text
-                              style={{ ...styles.ModalInfoContentLawRelated }}
+                              style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
                             </Text>
@@ -2373,7 +2383,7 @@ export function Detail5() {
 
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={styles.ModalInfoTitle}>
+                      <Text style={modalStyles.ModalInfoTitle}>
                         Chức vụ người ký:
                       </Text>
                     </View>
@@ -2381,7 +2391,7 @@ export function Detail5() {
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['roleSign']) ? (
-                        <Text style={styles.ModalInfoContent}>
+                        <Text style={modalStyles.ModalInfoContent}>
                           {Info['roleSign']}
                         </Text>
                       ) : (
@@ -2389,7 +2399,7 @@ export function Detail5() {
                         Info['roleSign'].map((key, i) => (
                           <View key={`${i}roleSign`}>
                             <Text
-                              style={{ ...styles.ModalInfoContentLawRelated }}
+                              style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
                             </Text>
@@ -2400,7 +2410,7 @@ export function Detail5() {
                   </View>
                   <View style={{ ...styles.ModalInfoContainer }}>
                     <View style={{ width: '40%' }}>
-                      <Text style={{ ...styles.ModalInfoTitle }}>
+                      <Text style={{ ...modalStyles.ModalInfoTitle }}>
                         Cơ quan ban hành:
                       </Text>
                     </View>
@@ -2408,7 +2418,7 @@ export function Detail5() {
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['unitPublish']) ? (
-                        <Text style={styles.ModalInfoContent}>
+                        <Text style={modalStyles.ModalInfoContent}>
                           {Info['unitPublish']}
                         </Text>
                       ) : (
@@ -2416,7 +2426,7 @@ export function Detail5() {
                         Info['unitPublish'].map((key, i) => (
                           <View key={`${i}unitPublish`}>
                             <Text
-                              style={{ ...styles.ModalInfoContentLawRelated }}
+                              style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
                             </Text>
@@ -2437,7 +2447,7 @@ export function Detail5() {
                       <View style={{ width: '100%' }}>
                         <Text
                           style={{
-                            ...styles.ModalInfoTitle,
+                            ...modalStyles.ModalInfoTitle,
                             textAlign: 'center',
                             paddingBottom: 0,
                           }}
@@ -2486,12 +2496,12 @@ export function Detail5() {
                                 >
                                   <Text
                                     style={{
-                                      ...styles.ModalInfoContentLawRelated,
+                                      ...modalStyles.ModalInfoContentLawRelated,
                                       textAlign: 'justify',
                                       fontWeight: 600,
                                       fontStyle: 'italic',
                                       // backgroundColor:'blue',
-                                      lineHeight: 22,
+                                      lineHeight: dieuLineHeight,
                                       paddingLeft: 0,
                                     }}
                                   >
@@ -2584,7 +2594,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 10,
-    marginTop: 12,
+    // sát phần trên như các Chương (chapter không có marginTop)
     marginBottom: 1,
   },
   appendixBadge: {

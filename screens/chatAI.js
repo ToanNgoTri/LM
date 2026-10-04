@@ -20,11 +20,21 @@ import Ionicons from '@react-native-vector-icons/ionicons';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { useSubscription } from '../subscription/SubscriptionContext';
 import { PaywallModal } from '../subscription/PaywallModal';
 import MicButton from './components/MicButton';
+import { splitLawLinks } from '../utils/lawLinks';
+import { ChatHistoryDrawer } from './components/ChatHistoryDrawer';
+import {
+  loadHistory,
+  saveHistory,
+  toConversation,
+  upsertConversation,
+  restoreMessages,
+  makeConversationId,
+} from '../utils/chatHistory';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,6 +50,8 @@ const HEADER_FADE = 36;
 const INPUT_BAR_HEIGHT = 64;
 // Khe hở giữa dòng chữ cuối và mép trên hộp nhập.
 const INPUT_BAR_GAP = 10;
+// Cách đáy bao nhiêu thì hiện nút "cuộn xuống cuối".
+const SCROLL_DOWN_SHOW_PX = 250;
 
 const API_URL = 'https://us-central1-project2-197c0.cloudfunctions.net/askLawAI';
 // Lấy lại câu trả lời mà server vẫn sinh tiếp khi app bị HĐH tạm dừng (user out
@@ -199,7 +211,26 @@ const TypingIndicator = memo(() => {
   );
 });
 
-const MessageBubble = memo(({ item, onCopy }) => {
+// Số văn bản trong câu trả lời AI -> link mở văn bản (Detail5).
+const AnswerText = memo(({ text, sources, onOpenLaw }) => {
+  const parts = splitLawLinks(text, sources);
+  return parts.map((p, i) =>
+    p.lawId ? (
+      <Text
+        key={i}
+        style={styles.lawLink}
+        onPress={() => onOpenLaw?.(p.lawId)}
+        suppressHighlighting={false}
+      >
+        {p.text}
+      </Text>
+    ) : (
+      p.text
+    ),
+  );
+});
+
+const MessageBubble = memo(({ item, onCopy, onOpenLaw }) => {
   const isUser = item.role === 'user';
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(16)).current;
@@ -243,7 +274,15 @@ const MessageBubble = memo(({ item, onCopy }) => {
             isUser ? styles.bubbleTextUser : styles.bubbleTextAssistant,
           ]}
         >
-          {item.text}
+          {isUser ? (
+            item.text
+          ) : (
+            <AnswerText
+              text={item.text}
+              sources={item.sources}
+              onOpenLaw={onOpenLaw}
+            />
+          )}
         </Text>
         <View style={styles.bubbleFooter}>
           <Text
@@ -305,6 +344,43 @@ export const AIChatScreen = () => {
   }, [consumeTrial]);
 
   const [messages, setMessages] = useState(makeInitialMessages);
+
+  // ---- Lịch sử hội thoại (drawer trái) --------------------------------------
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [history, setHistory] = useState([]);
+  const historyRef = useRef([]);
+  const historyLoadedRef = useRef(false);
+  const convIdRef = useRef(makeConversationId()); // cuộc đang mở
+  const [activeConvId, setActiveConvId] = useState(convIdRef.current);
+  useEffect(() => {
+    loadHistory().then(list => {
+      // Lỡ có cuộc vừa lưu trước khi đọc xong file -> gộp, không ghi đè.
+      let merged = list;
+      for (const c of historyRef.current) merged = upsertConversation(merged, c);
+      historyRef.current = merged;
+      historyLoadedRef.current = true;
+      setHistory(merged);
+    });
+  }, []);
+
+  // Lưu cuộc hiện tại vào lịch sử (bỏ qua nếu chưa có câu hỏi / không đổi gì).
+  const persistConversation = useCallback((id, msgs) => {
+    const conv = toConversation(id, msgs);
+    if (!conv) return;
+    const old = historyRef.current.find(c => c.id === id);
+    if (
+      old &&
+      old.messages.length === conv.messages.length &&
+      old.messages[old.messages.length - 1]?.text ===
+        conv.messages[conv.messages.length - 1]?.text
+    ) {
+      return;
+    }
+    const next = upsertConversation(historyRef.current, conv);
+    historyRef.current = next;
+    setHistory(next);
+    if (historyLoadedRef.current) saveHistory(next);
+  }, []);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -314,6 +390,16 @@ export const AIChatScreen = () => {
   const charQueueRef = useRef([]);       // hàng đợi ký tự chờ render
   const charTimerRef = useRef(null);     // setTimeout đang chạy
   const assistantIdRef = useRef(null);   // id message AI hiện tại
+
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  // Tự lưu khi câu trả lời đã xong (không ghi file theo từng nhịp chữ chảy).
+  useEffect(() => {
+    if (isStreaming) return;
+    persistConversation(convIdRef.current, messages);
+  }, [messages, isStreaming, persistConversation]);
 
   // ---- Xử lý trường hợp user out ra app khác giữa lúc AI đang trả lời -------
   // Khi app xuống background, HĐH đóng băng JS và thường ngắt luôn kết nối HTTP
@@ -424,16 +510,42 @@ export const AIChatScreen = () => {
   //  - về sát đáy (<=80px)      -> luôn bật lại (kể cả sau khi push)
   //  - rời đáy DO user tự cuộn  -> tắt
   //  - rời đáy do code cuộn     -> giữ nguyên (không tắt)
+  // Nút tròn "cuộn xuống cuối" (như app Claude): hiện khi đang ở xa đáy.
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const showScrollDownRef = useRef(false);
+  const scrollOffsetRef = useRef(0);
+  const updateScrollDown = useCallback(distanceFromBottom => {
+    // Nội dung chưa dài quá khung nhìn (cuộc mới, chỉ có lời chào) -> không có
+    // gì để cuộn, không hiện nút.
+    const scrollable =
+      contentHeightRef.current - listHeightRef.current > SCROLL_DOWN_SHOW_PX;
+    const show = scrollable && distanceFromBottom > SCROLL_DOWN_SHOW_PX;
+    if (show === showScrollDownRef.current) return;
+    showScrollDownRef.current = show;
+    setShowScrollDown(show);
+  }, []);
+  const scrollDownAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(scrollDownAnim, {
+      toValue: showScrollDown ? 1 : 0,
+      duration: 180,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [showScrollDown, scrollDownAnim]);
+
   const handleScroll = useCallback(e => {
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
     const distanceFromBottom =
       contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    scrollOffsetRef.current = contentOffset.y;
+    updateScrollDown(distanceFromBottom);
     if (distanceFromBottom <= 80) {
       autoScrollRef.current = true;
     } else if (userScrollingRef.current) {
       autoScrollRef.current = false;
     }
-  }, []);
+  }, [updateScrollDown]);
 
   // Đánh dấu cú cuộn đang do user điều khiển (kéo tay + quán tính sau khi thả).
   const handleScrollBeginDrag = useCallback(() => {
@@ -454,12 +566,18 @@ export const AIChatScreen = () => {
     // Ghi TRƯỚC khi kiểm tra auto-scroll: user cuộn lên đọc lại thì vẫn phải
     // biết đáy nằm ở đâu, không thì lúc bấm gửi sẽ nhảy về một số cũ mèm.
     contentHeightRef.current = h;
-    if (!autoScrollRef.current) return;
+    if (!autoScrollRef.current) {
+      // Đang đọc ở trên mà câu trả lời vẫn dài thêm -> đáy xa dần.
+      updateScrollDown(
+        h - (scrollOffsetRef.current + listHeightRef.current),
+      );
+      return;
+    }
     flatListRef.current?.scrollToOffset({
       offset: bottomOffset(),
       animated: false,
     });
-  }, []);
+  }, [updateScrollDown]);
 
   // Bàn phím đóng lại làm KHUNG NHÌN cao lên, nhưng chiều cao nội dung không
   // đổi nên onContentSizeChange im lặng. Không bắt thêm ở đây thì cụm "đang suy
@@ -573,6 +691,15 @@ const scheduleNextChar = useCallback(() => {
     // Toàn bộ chữ đã nhận được cho câu trả lời này (kể cả phần còn trong queue
     // chờ render). Dùng khi resume để biết còn thiếu bao nhiêu.
     let received = '';
+    // Văn bản trong CONTEXT server gửi trước phần chữ -> làm link số văn bản.
+    let sources = [];
+    const applySources = list => {
+      if (!Array.isArray(list) || !list.length) return;
+      sources = list;
+      setMessages(prev =>
+        prev.map(msg => (msg.id === assistantId ? { ...msg, sources } : msg)),
+      );
+    };
 
     // Lượt dùng thử chỉ bị trừ khi câu trả lời thật sự bắt đầu về (lỗi mạng /
     // rate limit thì không mất lượt). Cờ này đảm bảo mỗi câu chỉ trừ 1 lần.
@@ -661,13 +788,14 @@ const scheduleNextChar = useCallback(() => {
               id: assistantId,
               role: 'assistant',
               text: full,
+              sources,
               timestamp: new Date(),
             },
           ]);
         } else {
           setMessages(prev =>
             prev.map(msg =>
-              msg.id === assistantId ? { ...msg, text: full } : msg,
+              msg.id === assistantId ? { ...msg, text: full, sources } : msg,
             ),
           );
         }
@@ -711,6 +839,9 @@ const scheduleNextChar = useCallback(() => {
         }
         if (requestSeqRef.current !== mySeq) return true;
 
+        if (Array.isArray(data?.sources) && data.sources.length) {
+          sources = data.sources;
+        }
         if (data?.status === 'done') {
           if (!data.text) return false; // job rỗng -> để caller gửi lại
           applyAnswerText(data.text, true);
@@ -876,6 +1007,11 @@ try {
     return;
   }
 
+  if (json.sources) {
+    applySources(json.sources);
+    continue;
+  }
+
   const chunk = json.text;
   if (!chunk) continue;
   received += chunk;
@@ -891,6 +1027,7 @@ try {
         id: assistantId,
         role: 'assistant',
         text: '',
+        sources,
         timestamp: new Date(),
       },
     ]);
@@ -1012,9 +1149,13 @@ try {
     isStreamingRef.current = false;
   }, []);
 
-  // Xoá sạch khung chat, huỷ stream đang chạy và quay về lời chào ban đầu.
-  const handleResetChat = useCallback(() => {
-    const doReset = () => {
+  // Huỷ stream đang chạy + mọi việc đã hẹn của câu hiện tại, rồi thay khung chat
+  // bằng `nextMessages` (lời chào cho cuộc mới, hoặc một cuộc trong lịch sử).
+  const switchConversation = useCallback(
+    (nextId, nextMessages) => {
+      // Lưu cuộc đang mở trước khi rời (kể cả câu trả lời đang chảy dở).
+      persistConversation(convIdRef.current, messagesRef.current);
+
       try {
         xhrRef.current?.abort();
       } catch (_) {}
@@ -1029,33 +1170,73 @@ try {
       lastFlushAtRef.current = 0;
       lastVibrateAtRef.current = 0;
       assistantIdRef.current = null;
-      // Không để câu cũ tự gửi lại sau khi user đã làm mới khung chat.
+      // Không để câu cũ tự gửi lại sau khi user đã chuyển cuộc trò chuyện.
       lastRequestRef.current = null;
       autoRetryRef.current = 0;
       leftAppDuringStreamRef.current = false;
       wentBackgroundRef.current = false;
       pendingRetryRef.current = null;
-      requestSeqRef.current += 1; // vô hiệu mọi việc đã hẹn của câu vừa xoá
+      requestSeqRef.current += 1; // vô hiệu mọi việc đã hẹn của câu vừa rời
 
       setIsTyping(false);
       setIsStreaming(false);
       isStreamingRef.current = false;
       setInputText('');
-      setMessages(makeInitialMessages());
+      convIdRef.current = nextId;
+      setActiveConvId(nextId);
+      showScrollDownRef.current = false;
+      setShowScrollDown(false);
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
 
       autoScrollRef.current = true;
       Keyboard.dismiss();
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 60);
-    };
+      setTimeout(() => scrollToBottom(false), 60);
+    },
+    [persistConversation, scrollToBottom],
+  );
 
-    Alert.alert(
-      'Làm mới khung chat',
-      'Toàn bộ đoạn hội thoại hiện tại sẽ bị xoá và bắt đầu lại từ đầu.',
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Làm mới', style: 'destructive', onPress: doReset },
-      ],
-    );
+  const startNewChat = useCallback(() => {
+    setDrawerOpen(false);
+    // Đang ở cuộc mới chưa hỏi gì -> không tạo thêm cuộc trống.
+    if (!messagesRef.current.some(m => m.role === 'user')) return;
+    switchConversation(makeConversationId(), makeInitialMessages());
+  }, [switchConversation]);
+
+  const openConversation = useCallback(
+    conv => {
+      setDrawerOpen(false);
+      if (conv.id === convIdRef.current) return;
+      switchConversation(conv.id, [
+        ...makeInitialMessages(),
+        ...restoreMessages(conv),
+      ]);
+    },
+    [switchConversation],
+  );
+
+  const deleteConversation = useCallback(conv => {
+    Alert.alert('Xoá cuộc trò chuyện', `Xoá "${conv.title}" khỏi lịch sử?`, [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: () => {
+          const next = historyRef.current.filter(c => c.id !== conv.id);
+          historyRef.current = next;
+          setHistory(next);
+          saveHistory(next);
+          // Xoá đúng cuộc đang mở -> sang cuộc mới, không thì lần lưu sau sẽ
+          // ghi nó trở lại.
+          if (conv.id === convIdRef.current) {
+            convIdRef.current = makeConversationId();
+            setActiveConvId(convIdRef.current);
+            messagesRef.current = makeInitialMessages();
+            setMessages(messagesRef.current);
+          }
+        },
+      },
+    ]);
   }, []);
 
   const handleCopy = useCallback(
@@ -1074,9 +1255,17 @@ try {
     [insets.top],
   );
 
+  const navigation = useNavigation();
+  const openLaw = useCallback(
+    lawId => navigation.navigate('accessLaw', { screen: lawId }),
+    [navigation],
+  );
+
   const renderMessage = useCallback(
-    ({ item }) => <MessageBubble item={item} onCopy={handleCopy} />,
-    [handleCopy],
+    ({ item }) => (
+      <MessageBubble item={item} onCopy={handleCopy} onOpenLaw={openLaw} />
+    ),
+    [handleCopy, openLaw],
   );
   const keyExtractor = useCallback(item => item.id, []);
 
@@ -1133,8 +1322,7 @@ try {
   const headerPad =
     insets.top +
     TOP_BAR_HEIGHT +
-    HEADER_FADE +
-    (isPremium && expiryDate ? 18 : 0);
+    HEADER_FADE;
 
   const ListFooter = useCallback(
     () => (
@@ -1182,6 +1370,35 @@ try {
         keyboardShouldPersistTaps="handled"
       />
 
+      {/* Nút cuộn xuống cuối: nổi giữa, ngay trên hộp nhập. */}
+      <Animated.View
+        pointerEvents={showScrollDown ? 'box-none' : 'none'}
+        style={[
+          styles.scrollDownWrap,
+          {
+            bottom: bottomInset + inputBarHeight + 12,
+            opacity: scrollDownAnim,
+            transform: [
+              {
+                translateY: scrollDownAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [12, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.scrollDownBtn}
+          activeOpacity={0.8}
+          onPress={() => scrollToBottom(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="arrow-down" size={18} color="#E0E0F4" />
+        </TouchableOpacity>
+      </Animated.View>
+
       {/* Hộp nhập NỔI trên danh sách: khung ngoài trong suốt, chỉ đúng cái hộp
           bo tròn là có nền, nên phần bị che đúng bằng hộp chứ không phải cả
           một dải ngang màn hình. */}
@@ -1191,16 +1408,13 @@ try {
         style={[styles.inputBar, { bottom: bottomInset }]}
       >
         <View style={styles.inputRow}>
-          {/* Làm mới hội thoại: đặt ở đầu bên kia của thanh nhập, đối diện nút
-              gửi, để hai nút cân nhau và không bị bấm nhầm lẫn nhau. */}
-          <TouchableOpacity
-            style={styles.resetBtn}
-            activeOpacity={0.7}
-            onPress={handleResetChat}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="refresh" size={17} color="#8A8AA8" />
-          </TouchableOpacity>
+          {/* Ghi âm câu hỏi: đặt ở đầu bên trái thanh nhập, đối diện nút gửi.
+              Tự ẩn nếu máy/bản build không có bộ nhận dạng giọng nói. */}
+          <MicButton
+            value={inputText}
+            onChangeText={setInputText}
+            active={isFocused}
+          />
           <TextInput
             ref={inputRef}
             style={styles.input}
@@ -1213,13 +1427,6 @@ try {
             returnKeyType="send"
             onSubmitEditing={handleSend}
             blurOnSubmit
-          />
-          {/* Đọc câu hỏi bằng giọng nói. Tự ẩn nếu máy/bản build không có bộ
-              nhận dạng, nên không cần kiểm tra gì ở đây. */}
-          <MicButton
-            value={inputText}
-            onChangeText={setInputText}
-            active={isFocused}
           />
           {/* Đang chảy chữ thì chính nút gửi biến thành nút dừng — bấm một
               lần là cắt hẳn câu trả lời, giữ lại phần đã hiện. */}
@@ -1260,55 +1467,54 @@ try {
       >
         <View style={styles.topBar} pointerEvents="box-none">
           <View style={styles.topBarLeft}>
-            <View style={styles.headerAvatar}>
-              <Ionicons name="sparkles" size={16} color="#fff" />
-            </View>
+            {/* Mở drawer: gói đăng ký + lịch sử các câu đã hỏi. */}
+            <TouchableOpacity
+              style={styles.headerAvatar}
+              activeOpacity={0.8}
+              onPress={() => {
+                Keyboard.dismiss();
+                setDrawerOpen(true);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="menu" size={20} color="#fff" />
+            </TouchableOpacity>
             {/* <Text style={styles.headerTitle}>Trợ lý Luật AI</Text> */}
           </View>
 
           <View style={styles.topBarRight}>
-            {isPremium ? (
-              <View style={styles.premiumPill}>
-                <Ionicons name="diamond" size={12} color="#FFD479" />
-                <Text style={styles.premiumPillText}>
-                  Premium{planLabel ? ` · ${planLabel}` : ''}
-                </Text>
-              </View>
-            ) : trialRemaining > 0 ? (
-              // Máy mới cài: còn lượt dùng thử model premium.
-              <TouchableOpacity
-                style={styles.trialPill}
-                activeOpacity={0.8}
-                onPress={() => setPaywallVisible(true)}
-              >
-                <Ionicons name="gift" size={12} color="#7FE3A1" />
-                <Text style={styles.trialPillText}>
-                  Dùng thử {trialRemaining}/{trialTotal}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.freePill}
-                activeOpacity={0.8}
-                onPress={() => setPaywallVisible(true)}
-              >
-                <Text style={styles.freePillText}>Bản Free</Text>
-                <View style={styles.upgradeChip}>
-                  <Ionicons name="sparkles" size={11} color="#fff" />
-                  <Text style={styles.upgradeChipText}>Nâng cấp</Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            {/* Cuộc trò chuyện mới (gói đăng ký / nâng cấp nằm trong drawer). */}
+            <TouchableOpacity
+              style={styles.newChatHeaderBtn}
+              activeOpacity={0.8}
+              onPress={startNewChat}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="create-outline" size={20} color="#E0E0F4" />
+            </TouchableOpacity>
           </View>
         </View>
-
-        {isPremium && expiryDate && (
-          <Text style={styles.expiryText}>
-            Hiệu lực đến {expiryDate.toLocaleDateString('vi-VN')}
-          </Text>
-        )}
       </View>
 
+
+      <ChatHistoryDrawer
+        visible={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        isPremium={isPremium}
+        planLabel={planLabel}
+        expiryDate={expiryDate}
+        trialRemaining={trialRemaining}
+        trialTotal={trialTotal}
+        onUpgrade={() => {
+          setDrawerOpen(false);
+          setPaywallVisible(true);
+        }}
+        history={history}
+        activeId={activeConvId}
+        onSelect={openConversation}
+        onDelete={deleteConversation}
+        onNewChat={startNewChat}
+      />
 
       <PaywallModal
         visible={paywallVisible}
@@ -1485,6 +1691,7 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 14.5, lineHeight: 21 },
   bubbleTextUser: { color: '#FFFFFF' },
   bubbleTextAssistant: { color: '#E0E0F4' },
+  lawLink: { color: '#7FB2FF', textDecorationLine: 'underline' },
   bubbleFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1512,6 +1719,37 @@ const styles = StyleSheet.create({
 
   // Khung ngoài chỉ để định vị: trong suốt hoàn toàn, không nền, không nét
   // ngăn — tin nhắn chạy được xuống tận đáy màn hình phía sau nó.
+  newChatHeaderBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1A2E',
+    borderWidth: 1,
+    borderColor: '#252540',
+  },
+  scrollDownWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  scrollDownBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1F1F33',
+    borderWidth: 1,
+    borderColor: '#33334F',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
   inputBar: {
     position: 'absolute',
     left: 0,

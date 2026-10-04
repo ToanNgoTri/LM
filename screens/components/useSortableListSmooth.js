@@ -116,8 +116,18 @@ export function useSortableListSmooth({
     [],
   );
 
-  const handleScroll = useAnimatedScrollHandler(event => {
-    scrollY.value = event.contentOffset.y;
+  // autoScroll chỉ được useSortable gán khi đang kéo item; bản gốc KHÔNG trả về
+  // 'none' lúc thả (đã vá trong patches/), nên thả item gần mép danh sách làm
+  // autoScroll kẹt ở 'up'/'down' -> reaction trên gọi scrollTo() mỗi frame cuộn
+  // tay -> Android mất fling, cuộn giật sau khi kéo-thả. Chặn thêm ở đây: bắt
+  // đầu cuộn tay thì chắc chắn không còn kéo item.
+  const handleScroll = useAnimatedScrollHandler({
+    onBeginDrag: () => {
+      autoScroll.value = AUTO_SCROLL_NONE;
+    },
+    onScroll: event => {
+      scrollY.value = event.contentOffset.y;
+    },
   });
 
   // Sau khi cuộn xong, báo DropProvider đo lại vị trí các slot.

@@ -235,19 +235,25 @@ export const callOneLaw = onRequest(async (req, res) => {
   }
 });
 
+// Văn bản ký trong N ngày gần nhất (mặc định 30), không giới hạn số lượng.
 export const getlastedlaws = onRequest(async (req, res) => {
   if (req.method === 'POST') {
     try {
-      const database = client.db('LawMachine');
-      const LawContent = database.collection('LawSearchDescription');
+      const days = Number(req.body?.days) > 0 ? Number(req.body.days) : 30;
+      const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      from.setUTCHours(0, 0, 0, 0);
 
-      LawContent.find()
-        .limit(50)
+      const LawContent = client
+        .db('LawMachine')
+        .collection('LawSearchDescription');
+      const o = await LawContent.find(buildDateCondition(from.toISOString()))
         .project({ info: 1 })
         .sort({ 'info.lawDaySign': -1 })
-        .toArray()
-        .then(o => res.json(o));
-    } finally {
+        .toArray();
+      res.json(o);
+    } catch (e) {
+      console.error('getlastedlaws error:', e);
+      res.status(500).json([]);
     }
   }
 });
@@ -567,11 +573,19 @@ export const askLawAI = onRequest(
         .sort(byRelevanceThenRecency)
         .slice(0, TOP_CONTEXT);
 
+      // Văn bản có trong CONTEXT -> app dùng để biến số văn bản trong câu trả
+      // lời thành link mở Detail5 (lawId = _id của văn bản trong LawMachine).
+      const sources = [];
+      for (const c of picked) {
+        const id = c.data.lawId;
+        if (id && !sources.some(s => s.id === id)) sources.push({ id });
+      }
+
       const fmt = t => (Number.isNaN(t) ? '(không rõ)' : new Date(t).toLocaleDateString('vi-VN'));
       const context = picked
         .map(
           c =>
-            `[${c.data.fullText}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))} có hiệu lực ngày ${fmt(c.activeT)}]`,
+            `[Số văn bản: ${c.data.lawId}\n${c.data.fullText}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))} có hiệu lực ngày ${fmt(c.activeT)}]`,
         )
         .join('\n\n');
 
@@ -592,8 +606,7 @@ Nhiệm vụ:
 Khi câu trả lời có căn cứ pháp luật:
 1. Luôn nêu căn cứ trước.
 2. Ghi theo mẫu:
-   "Căn cứ [Tên văn bản] số [Số văn bản] ngày ...., có hiệu lực từ ngày ... .
-   Điều [1|2|3]. [ghi rõ nội dung trích yếu]:
+   "Căn cứ [Tên văn bản] số [Số văn bản] ngày ...., có hiệu lực từ ngày ... .   Điều [1|2|3]. [ghi rõ nội dung trích yếu]:
    [[1|2|3]. nội dung cụ thể ]...
 2. Sau đó mới giải thích nội dung bằng lời văn tự nhiên.
 4. Không được bịa số điều, khoản hoặc tên văn bản. Chỉ sử dụng thông tin có trong CONTEXT.
@@ -683,6 +696,10 @@ ${context}`,
       }
 
       console.log(`Dùng model: ${usedModel}`);
+
+      // Gửi danh sách văn bản trước khi stream chữ (app cũ bỏ qua vì không có text).
+      sse({ sources });
+      saveJob({ sources }); // fire-and-forget
 
       // ── BƯỚC 4: Stream response về client ────────────────────────────
       // Model có thể nhận request (HTTP 200) nhưng không sinh ra chữ nào:
@@ -820,6 +837,7 @@ export const getLawAIAnswer = onRequest(async (req, res) => {
       text: doc.text || '',
       error: doc.error || null,
       code: doc.code || null,
+      sources: doc.sources || [],
     });
   } catch (e) {
     console.error('getLawAIAnswer error:', e);

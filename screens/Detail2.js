@@ -37,6 +37,11 @@ const SUGGEST_FILE = Dirs.CacheDir + '/suggestIndex.json'; // { count, items:[{i
 const SUGGEST_LIMIT = 8; // số dòng gợi ý tối đa
 const SUGGEST_MIN_CHARS = 2; // gõ tối thiểu 2 ký tự mới gợi ý
 const DESC_BATCH = 400; // số _id mỗi lần gọi getSuggestDescs (tránh $in quá lớn)
+// Khóa ngày (năm-tháng-ngày theo giờ máy) cho cache "văn bản 30 ngày gần nhất".
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
 
 // Chuẩn hoá để so khớp GIỐNG thói quen gõ của người dùng:
 //  - bỏ dấu, hạ chữ thường (không phân biệt dấu/hoa-thường);
@@ -191,7 +196,7 @@ export function Detail2({}) {
     );
 
   // Giữ giá trị info5 mới nhất cho các callback bất đồng bộ (đọc file, đếm văn bản)
-  // để chúng không ghi đè kết quả tìm kiếm đang hiển thị bằng danh sách 50 mặc định.
+  // để chúng không ghi đè kết quả tìm kiếm đang hiển thị bằng danh sách mặc định (30 ngày gần nhất).
   const info5Ref = useRef(info5);
   useEffect(() => {
     info5Ref.current = info5;
@@ -221,7 +226,9 @@ export function Detail2({}) {
   async function storeLastedLaw() {
     await writeUserJson(LASTED_LAW_FILE, {
       currentCountLaw: result4,
-      lastedLaw: convertResult(info3.slice(0, 50)),
+      // ngày lưu: cửa sổ 30 ngày trượt theo ngày nên cache chỉ dùng trong ngày
+      savedDay: todayKey(),
+      lastedLaw: convertResult(info3),
     });
   }
   useEffect(() => {
@@ -229,8 +236,8 @@ export function Detail2({}) {
       storeLastedLaw();
       // Không ghi đè khi đang có kết quả tìm kiếm (info5)
       if (!info5Ref.current) {
-        setSearchResult(convertResult(info3.slice(0, 50)));
-        setLawFilted(convertResult(info3.slice(0, 50)));
+        setSearchResult(convertResult(info3));
+        setLawFilted(convertResult(info3));
       }
       // console.log('info3',info3);
     }
@@ -353,14 +360,18 @@ export function Detail2({}) {
   let internetConnected = netInfo.isConnected;
 
   async function checkLastedLaw() {
-    // Đang có kết quả tìm kiếm thì không tải danh sách 50 mặc định
+    // Đang có kết quả tìm kiếm thì không tải danh sách mặc định (30 ngày gần nhất)
     if (info5Ref.current) return;
 
     const contentLastedLaw = await readUserJson(LASTED_LAW_FILE, null);
 
     if (info5Ref.current) return;
 
-    if (contentLastedLaw && contentLastedLaw['currentCountLaw'] == result4) {
+    if (
+      contentLastedLaw &&
+      contentLastedLaw['currentCountLaw'] == result4 &&
+      contentLastedLaw['savedDay'] === todayKey()
+    ) {
       setSearchResult(contentLastedLaw['lastedLaw']);
       setLawFilted(contentLastedLaw['lastedLaw']);
     } else {
