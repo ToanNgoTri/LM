@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -12,6 +12,7 @@ import {
   StyleSheet,
   useWindowDimensions,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -33,6 +34,15 @@ const formatWhen = ms => {
   }
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
+
+// Bỏ dấu + thường hoá để tìm "luat" ra "Luật".
+const fold = str =>
+  String(str || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
 
 // Drawer bên trái của Chat AI (giống app Claude): gói đăng ký + lịch sử hỏi.
 // Dùng Modal trong suốt để phủ cả thanh tab; tự trượt bằng Animated.
@@ -59,11 +69,24 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   const [mounted, setMounted] = useState(visible);
   const progress = useRef(new Animated.Value(0)).current; // 0 đóng, 1 mở
   const dragX = useRef(new Animated.Value(0)).current; // <= 0 khi vuốt đóng
+  const [query, setQuery] = useState('');
+
+  // Lọc lịch sử theo tiêu đề + nội dung tin nhắn.
+  const filtered = useMemo(() => {
+    const q = fold(query.trim());
+    if (!q) return history;
+    return history.filter(
+      c =>
+        fold(c.title).includes(q) ||
+        (c.messages || []).some(m => fold(m.text).includes(q)),
+    );
+  }, [history, query]);
 
   useEffect(() => {
     if (visible) {
       setMounted(true);
       dragX.setValue(0);
+      setQuery('');
       Animated.timing(progress, {
         toValue: 1,
         duration: OPEN_MS,
@@ -123,7 +146,7 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   );
   const backdropOpacity = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 0.55],
+    outputRange: [0, 0.2],
   });
 
   const renderItem = ({ item }) => {
@@ -233,18 +256,43 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
         </TouchableOpacity>
 
         <View style={styles.divider} />
-        <Text style={styles.sectionLabel}>Gần đây</Text>
         {history.length ? (
+          <View style={styles.searchBox}>
+            <Ionicons name="search" size={15} color="#6A6A88" />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Tìm trong lịch sử"
+              placeholderTextColor="#5E5E7C"
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {query ? (
+              <TouchableOpacity
+                onPress={() => setQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close-circle" size={16} color="#6A6A88" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+        <Text style={styles.sectionLabel}>Gần đây</Text>
+        {filtered.length ? (
           <FlatList
             style={styles.list}
-            data={history}
+            data={filtered}
+            keyboardShouldPersistTaps="handled"
             keyExtractor={c => c.id}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 12 }}
           />
         ) : (
-          <Text style={styles.emptyText}>Chưa có câu hỏi nào.</Text>
+          <Text style={styles.emptyText}>
+            {history.length ? 'Không tìm thấy.' : 'Chưa có câu hỏi nào.'}
+          </Text>
         )}
       </Animated.View>
     </Modal>
@@ -252,7 +300,8 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
 });
 
 const styles = StyleSheet.create({
-  backdrop: { position: 'absolute', top: 0, left: 0, backgroundColor: '#000' },
+  // Nền trắng đục (không dùng đen) để drawer tối nổi bật hơn.
+  backdrop: { position: 'absolute', top: 0, left: 0, backgroundColor: '#fff' },
   touchLayer: { position: 'absolute', top: 0, left: 0 },
   panel: {
     position: 'absolute',
@@ -311,6 +360,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 10,
     paddingVertical: 11,
     paddingHorizontal: 12,
@@ -323,6 +373,22 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: '#2A2A44',
     marginTop: 16,
+  },
+  searchBox: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#1A1A2E',
+  },
+  searchInput: {
+    flex: 1,
+    color: '#E0E0F4',
+    fontSize: 14,
+    paddingVertical: 0,
   },
   sectionLabel: {
     marginTop: 14,
