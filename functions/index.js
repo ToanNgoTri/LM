@@ -411,7 +411,7 @@ export const askLawAI = onRequest(
     const FREE_MODELS = [
       'google/gemma-4-31b-it:free',
       'google/gemma-4-26b-a4b-it:free',
-      'qwen/qwen3.8-27b:free',
+      // 'qwen/qwen3.8-27b:free',
     ];
 
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
