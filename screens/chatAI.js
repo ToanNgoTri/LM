@@ -51,11 +51,11 @@ const INPUT_BAR_GAP = 10;
 // Cách đáy bao nhiêu thì hiện nút "cuộn xuống cuối".
 const SCROLL_DOWN_SHOW_PX = 250;
 
-const API_URL = 'http://10.0.2.2:5002/project2-197c0/us-central1/askLawAI'; // TEMP-EMU
+const API_URL = 'https://us-central1-project2-197c0.cloudfunctions.net/askLawAI';
 // Lấy lại câu trả lời mà server vẫn sinh tiếp khi app bị HĐH tạm dừng (user out
 // ra app khác). Xem functions/index.js -> getLawAIAnswer.
 const ANSWER_URL =
-  'http://10.0.2.2:5002/project2-197c0/us-central1/getLawAIAnswer'; // TEMP-EMU
+  'https://us-central1-project2-197c0.cloudfunctions.net/getLawAIAnswer';
 // Nhịp hỏi lại server khi câu trả lời còn đang được sinh.
 const RESUME_POLL_MS = 1500;
 // Trần chờ khi resume (~90s) — đủ cho một câu dài, tránh hỏi vô hạn.

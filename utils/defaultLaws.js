@@ -18,7 +18,7 @@ import {
 } from '../storage/userFiles';
 import { indexTables } from './lawTables';
 
-const CF_BASE = 'http://10.0.2.2:5002/project2-197c0/us-central1'; // TEMP-EMU
+const CF_BASE = 'https://us-central1-project2-197c0.cloudfunctions.net';
 
 // Home nghe sự kiện này để đọc lại order.txt.
 export const DOWNLOADED_CHANGED = 'downloadedLawsChanged';
