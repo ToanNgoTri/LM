@@ -95,7 +95,7 @@ export async function userFileExists(path) {
 // ── Cài đặt người dùng (SETTINGS_FILE) ─────────────────────────────────────
 // Nhiều nơi cùng ghi file này (theme, cỡ chữ app, cỡ chữ Detail5) nên mọi lần
 // ghi đi qua một hàng đợi đọc-gộp-ghi để không đè mất key của nhau.
-//   themeMode: 'system' | 'light' | 'dark'
+//   themeMode: 'light' | 'dark' ('system' cũ bị bỏ qua → sáng)
 //   fontScale: hệ số cỡ chữ toàn app (theme/ThemeContext FONT_SCALES)
 //   fontSize:  cỡ chữ nội dung văn bản ở Detail5 (thiếu = theo fontScale)
 let settingsQueue = Promise.resolve();

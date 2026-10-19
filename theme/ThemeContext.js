@@ -1,6 +1,6 @@
 // ── Theme toàn app: chế độ sáng/tối + cỡ chữ ───────────────────────────────
 // Lưu trong SETTINGS_FILE (themeMode, fontScale). Trước khi đọc xong file thì
-// dùng mặc định: theo hệ thống, cỡ chữ "Vừa".
+// dùng mặc định: sáng, cỡ chữ "Vừa".
 import {
   createContext,
   useCallback,
@@ -9,12 +9,11 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { StatusBar, StyleSheet, useColorScheme } from 'react-native';
+import { StatusBar, StyleSheet } from 'react-native';
 import { light, dark } from './colors';
 import { readUserSettings, updateUserSettings } from '../storage/userFiles';
 
 export const THEME_MODES = [
-  { key: 'system', label: 'Theo hệ thống', icon: 'phone-portrait-outline' },
   { key: 'light', label: 'Sáng', icon: 'sunny-outline' },
   { key: 'dark', label: 'Tối', icon: 'moon-outline' },
 ];
@@ -29,7 +28,7 @@ export const FONT_SCALES = [
 const isValidScale = v => FONT_SCALES.some(s => s.value === v);
 
 const ThemeContext = createContext({
-  mode: 'system',
+  mode: 'light',
   isDark: false,
   colors: light,
   fontScale: 1,
@@ -39,8 +38,7 @@ const ThemeContext = createContext({
 });
 
 export function ThemeProvider({ children }) {
-  const system = useColorScheme();
-  const [mode, setModeState] = useState('system');
+  const [mode, setModeState] = useState('light');
   const [fontScale, setFontScaleState] = useState(1);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -63,7 +61,7 @@ export function ThemeProvider({ children }) {
     updateUserSettings({ fontScale: v });
   }, []);
 
-  const isDark = mode === 'dark' || (mode === 'system' && system === 'dark');
+  const isDark = mode === 'dark';
 
   const value = useMemo(
     () => ({
