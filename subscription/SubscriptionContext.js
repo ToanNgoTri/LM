@@ -111,7 +111,9 @@ const DEFAULT_VALUE = {
   isPremium: false,
   plan: null, // 'monthly' | 'yearly' | null
   planLabel: '',
-  expiryDate: null, // Date | null
+  expiryDate: null, // Date | null — ngày Premium hết hiệu lực (kỳ hiện tại)
+  expiryEstimated: false, // true: Android tự tính (store không trả ngày hết hạn)
+  autoRenew: null, // true: tự gia hạn | false: đã huỷ gia hạn | null: không rõ
   loading: true,
   purchasing: false,
   plans: PLANS.map(p => ({ ...p, displayPrice: p.priceFallback })),
@@ -132,31 +134,71 @@ const SubscriptionContext = createContext(DEFAULT_VALUE);
 
 export const useSubscription = () => useContext(SubscriptionContext);
 
+const NO_ENTITLEMENT = {
+  isPremium: false,
+  plan: null,
+  planLabel: '',
+  expiryDate: null,
+  expiryEstimated: false,
+  autoRenew: null,
+};
+
+// Android (Google Play Billing) không trả ngày hết hạn cho client, chỉ có
+// transactionDate = lúc mua lần đầu. Kỳ hạn hiện tại = mốc mua cộng dồn từng
+// tháng/năm cho tới khi vượt qua hôm nay (ngày cuối tháng bị kẹp như Google:
+// mua 31/01 -> kỳ sau 28/02). Chỉ là ước tính, nguồn chính xác là Play API.
+function estimateAndroidExpiry(transactionDate, isYearly) {
+  if (!transactionDate) return null;
+  const start = new Date(transactionDate);
+  const now = Date.now();
+  for (let k = 1; k <= 1200; k++) {
+    const months = isYearly ? 12 * k : k;
+    const y = start.getFullYear() + Math.floor((start.getMonth() + months) / 12);
+    const m = (start.getMonth() + months) % 12;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const next = new Date(start);
+    next.setFullYear(y, m, Math.min(start.getDate(), lastDay));
+    if (next.getTime() > now) return next;
+  }
+  return null;
+}
+
 // Chuyển danh sách subscription đang hoạt động (từ store) thành entitlement.
 function deriveEntitlement(activeSubs) {
-  if (!activeSubs || activeSubs.length === 0) {
-    return { isPremium: false, plan: null, planLabel: '', expiryDate: null };
-  }
+  if (!activeSubs || activeSubs.length === 0) return NO_ENTITLEMENT;
   const active = activeSubs.find(s => s.isActive) || activeSubs[0];
   const id = active.currentPlanId || active.productId || '';
   const isYearly = id.includes('year');
   const expiryMs = active.expirationDateIOS; // iOS: ms timestamp; Android: undefined
+  const expiryDate = expiryMs
+    ? new Date(expiryMs)
+    : estimateAndroidExpiry(active.transactionDate, isYearly);
+  const autoRenew =
+    active.renewalInfoIOS?.willAutoRenew ?? active.autoRenewingAndroid ?? null;
   return {
     isPremium: true,
     plan: isYearly ? 'yearly' : 'monthly',
     planLabel: planLabelFromId(id),
-    expiryDate: expiryMs ? new Date(expiryMs) : null,
+    expiryDate,
+    expiryEstimated: !expiryMs && !!expiryDate,
+    autoRenew,
   };
 }
 
+// Entitlement đọc từ cache file (expiryDate lưu dạng ms).
+const entitlementFromCache = c => ({
+  ...NO_ENTITLEMENT,
+  isPremium: c.isPremium,
+  plan: c.plan,
+  planLabel: c.planLabel || '',
+  expiryDate: c.expiryDate ? new Date(c.expiryDate) : null,
+  expiryEstimated: !!c.expiryEstimated,
+  autoRenew: c.autoRenew ?? null,
+});
+
 // ── Provider khi CÓ react-native-iap ────────────────────────────────────────
 function IapProvider({ children }) {
-  const [entitlement, setEntitlement] = useState({
-    isPremium: false,
-    plan: null,
-    planLabel: '',
-    expiryDate: null,
-  });
+  const [entitlement, setEntitlement] = useState(NO_ENTITLEMENT);
   const [plans, setPlans] = useState(
     PLANS.map(p => ({ ...p, displayPrice: p.priceFallback })),
   );
@@ -172,6 +214,8 @@ function IapProvider({ children }) {
       plan: ent.plan,
       planLabel: ent.planLabel,
       expiryDate: ent.expiryDate ? ent.expiryDate.getTime() : null,
+      expiryEstimated: ent.expiryEstimated,
+      autoRenew: ent.autoRenew,
     });
   }, []);
 
@@ -200,7 +244,13 @@ function IapProvider({ children }) {
         Alert.alert('Không thể thanh toán', err?.message || 'Đã có lỗi xảy ra.');
       }
     },
-    onError: e => console.warn('[Subscription] IAP error:', e?.message),
+    onError: e => {
+      console.warn('[Subscription] IAP error:', e?.message);
+      // Không kết nối được store (máy không có Google Play/emulator, mất mạng):
+      // useEffect khởi tạo bên dưới sẽ không bao giờ chạy -> phải tự tắt loading,
+      // nếu không màn Cài đặt quay vòng mãi.
+      setLoading(false);
+    },
   });
 
   const refreshEntitlement = useCallback(async () => {
@@ -215,14 +265,7 @@ function IapProvider({ children }) {
   // Đọc cache ngay khi mount để hiển thị nhanh.
   useEffect(() => {
     readCache().then(c => {
-      if (c && c.isPremium) {
-        setEntitlement({
-          isPremium: c.isPremium,
-          plan: c.plan,
-          planLabel: c.planLabel || '',
-          expiryDate: c.expiryDate ? new Date(c.expiryDate) : null,
-        });
-      }
+      if (c && c.isPremium) setEntitlement(entitlementFromCache(c));
     });
   }, []);
 
@@ -326,6 +369,8 @@ function IapProvider({ children }) {
     plan: entitlement.plan,
     planLabel: entitlement.planLabel,
     expiryDate: entitlement.expiryDate,
+    expiryEstimated: entitlement.expiryEstimated,
+    autoRenew: entitlement.autoRenew,
     loading,
     purchasing,
     plans,
@@ -345,24 +390,12 @@ function IapProvider({ children }) {
 
 // ── Provider dự phòng khi KHÔNG có react-native-iap (không crash app) ────────
 function FallbackProvider({ children }) {
-  const [entitlement, setEntitlement] = useState({
-    isPremium: false,
-    plan: null,
-    planLabel: '',
-    expiryDate: null,
-  });
+  const [entitlement, setEntitlement] = useState(NO_ENTITLEMENT);
   const trial = usePremiumTrial();
 
   useEffect(() => {
     readCache().then(c => {
-      if (c && c.isPremium) {
-        setEntitlement({
-          isPremium: c.isPremium,
-          plan: c.plan,
-          planLabel: c.planLabel || '',
-          expiryDate: c.expiryDate ? new Date(c.expiryDate) : null,
-        });
-      }
+      if (c && c.isPremium) setEntitlement(entitlementFromCache(c));
     });
   }, []);
 
@@ -382,6 +415,8 @@ function FallbackProvider({ children }) {
     plan: entitlement.plan,
     planLabel: entitlement.planLabel,
     expiryDate: entitlement.expiryDate,
+    expiryEstimated: entitlement.expiryEstimated,
+    autoRenew: entitlement.autoRenew,
     ...trial,
     canUsePremium: entitlement.isPremium || trial.trialRemaining > 0,
     buy: notReady,

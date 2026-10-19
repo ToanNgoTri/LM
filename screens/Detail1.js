@@ -1,10 +1,7 @@
 import {
-  Text,
-  StyleSheet,
   View,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Keyboard,
   Animated,
   ActivityIndicator,
@@ -23,6 +20,7 @@ import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { ScreenToggle } from './components/ScreenToggle';
 import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
 import { setFilterUI } from '../redux/fetchData';
+import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 
 export function Detail1({}) {
   const [SearchResult, setSearchResult] = useState([]);
@@ -38,6 +36,16 @@ export function Detail1({}) {
   const tabBarHeight = useTabBarHeight();
   const insets = useSafeAreaInsets();
   const dispatch = useDispatch();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // Thanh tìm kiếm phía trên: nền tối cố định ở bản sáng (giữ như cũ), bản tối
+  // dùng nền surface cho hợp tông.
+  const headerBg = isDark ? colors.surface : '#222222';
+  // Hộp lọc "Nâng cao": header đen ở bản sáng.
+  const filterHeaderBg = isDark ? colors.cardAlt : '#000000';
+  const filterHeaderText = isDark ? colors.text : '#FFFFFF';
+  // Checkbox trong hộp lọc: bản sáng giữ màu mặc định của thư viện.
+  const filterCheckBoxColor = isDark ? colors.textSecondary : undefined;
 
   const filterUIState = useSelector(state => state['filterUI'].search);
   const input = filterUIState.input;
@@ -187,7 +195,9 @@ export function Detail1({}) {
             paddingRight: 30,
           }}
         >
-          <Text style={{ fontSize: 35, textAlign: 'center', color: 'gray' }}>
+          <Text
+            style={{ fontSize: 35, textAlign: 'center', color: colors.textMuted }}
+          >
             {Array.isArray(SearchResult)
               ? ''
               : 'Không có kết quả nào được tìm thấy'}
@@ -199,7 +209,7 @@ export function Detail1({}) {
 
   const renderItem = useCallback(
     data => <Item id={data} />,
-    [SearchResult, input],
+    [SearchResult, input, colors, styles],
   );
 
   const Item = memo(title => {
@@ -244,7 +254,11 @@ export function Detail1({}) {
           paddingBottom: 10,
           paddingTop: 10,
           justifyContent: 'center',
-          backgroundColor: i % 2 ? 'white' : '#DDDDDD',
+          backgroundColor: i % 2
+            ? colors.card
+            : isDark
+            ? colors.cardAlt
+            : '#DDDDDD',
         }}
         onPress={() => {
           navigation.push(`accessLaw`, {
@@ -276,7 +290,7 @@ export function Detail1({}) {
                 textAlign: 'left',
                 paddingLeft: 20,
                 fontStyle: 'italic',
-                color: 'gray',
+                color: colors.textMuted,
                 fontSize: 12,
               }}
             >
@@ -290,7 +304,7 @@ export function Detail1({}) {
                 right: 0,
                 paddingRight: 20,
                 fontStyle: 'italic',
-                color: 'gray',
+                color: colors.textMuted,
                 fontSize: 12,
                 position: 'absolute',
               }}
@@ -347,10 +361,10 @@ export function Detail1({}) {
 
       <View
         style={{
-          backgroundColor: '#222222',
+          backgroundColor: headerBg,
           paddingTop: insets.top + 5,
           borderBottomWidth: 1,
-          borderBottomColor: 'white',
+          borderBottomColor: isDark ? colors.border : 'white',
         }}
       >
         <ScreenToggle active="search" />
@@ -361,7 +375,7 @@ export function Detail1({}) {
               disabled={loading1}
               style={{
                 ...styles.inputBtb,
-                backgroundColor: 'white',
+                backgroundColor: colors.inputBg,
                 opacity: loading1 ? 0.5 : 1,
               }}
               onPress={() => {
@@ -377,7 +391,7 @@ export function Detail1({}) {
             >
               <Ionicons
                 name="funnel-outline"
-                style={{ ...styles.inputBtbText, color: 'black' }}
+                style={{ ...styles.inputBtbText, color: colors.text }}
               ></Ionicons>
               <View
                 style={{
@@ -424,7 +438,7 @@ export function Detail1({}) {
               style={{
                 position: 'relative',
                 flexDirection: 'row',
-                backgroundColor: 'white',
+                backgroundColor: colors.inputBg,
                 borderRadius: 15,
                 borderColor: warning ? '#FF4500' : 'none',
                 borderWidth: warning ? 1 : 0,
@@ -440,7 +454,7 @@ export function Detail1({}) {
                 value={input}
                 selectTextOnFocus={true}
                 placeholder="Nhập từ khóa..."
-                placeholderTextColor={'gray'}
+                placeholderTextColor={colors.placeholder}
                 onSubmitEditing={() => {
                   pressToSearch();
                 }}
@@ -465,7 +479,7 @@ export function Detail1({}) {
                   <Ionicons
                     name="close-circle-outline"
                     style={{
-                      color: 'black',
+                      color: colors.text,
                       fontSize: 20,
                       paddingRight: 8,
                     }}
@@ -482,7 +496,7 @@ export function Detail1({}) {
                 borderRadius: 100,
                 height: 40,
                 borderWidth: 2,
-                borderColor: '#f67c1a',
+                borderColor: colors.warning,
                 minWidth: 40,
               }}
               onPress={() => {
@@ -557,7 +571,7 @@ export function Detail1({}) {
         style={{
           marginTop: 0,
           flex: 1,
-          backgroundColor: '#EEEFE4',
+          backgroundColor: isDark ? colors.bg : '#EEEFE4',
           // Không cần chừa chỗ ở đây: FlatList đã có ListFooterComponent
           // cao tabBarHeight, còn các nhánh khác tự chừa riêng.
         }}
@@ -619,7 +633,7 @@ export function Detail1({}) {
             ListFooterComponent={
               paper < Math.ceil(Object.keys(LawFilted).length / 30) ? (
                 <>
-                  <ActivityIndicator color="black" />
+                  <ActivityIndicator color={colors.text} />
                   <View
                     style={{
                       height: tabBarHeight,
@@ -656,11 +670,11 @@ export function Detail1({}) {
               width: 48,
               height: 48,
               borderRadius: 24,
-              backgroundColor: 'gray',
+              backgroundColor: colors.textMuted,
               opacity: 0.6,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: 'black',
+              shadowColor: colors.shadow,
               shadowOpacity: 0.3,
               shadowRadius: 3,
               shadowOffset: { width: 0, height: 2 },
@@ -719,12 +733,12 @@ export function Detail1({}) {
               minHeight: 500,
               right: 50,
               left: 50,
-              backgroundColor: 'white',
+              backgroundColor: colors.card,
               display: 'flex',
               borderRadius: 20,
               transform: [{ scale: Scale }],
               overflow: 'hidden',
-              shadowColor: 'black',
+              shadowColor: colors.shadow,
               shadowOpacity: 1,
               shadowOffset: {
                 width: 10,
@@ -737,14 +751,18 @@ export function Detail1({}) {
             <View
               style={{
                 flexDirection: 'row',
-                backgroundColor: 'black',
+                backgroundColor: filterHeaderBg,
                 height: 50,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <Text
-                style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}
+                style={{
+                  color: filterHeaderText,
+                  fontWeight: 'bold',
+                  fontSize: 16,
+                }}
               >
                 Nâng cao
               </Text>
@@ -761,7 +779,9 @@ export function Detail1({}) {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: 'white', fontSize: 13 }}>Xóa lọc</Text>
+                <Text style={{ color: filterHeaderText, fontSize: 13 }}>
+                  Xóa lọc
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -773,7 +793,7 @@ export function Detail1({}) {
                     value={input || ''}
                     onChangeText={text => setInput(text)}
                     placeholder="Nhập từ khóa..."
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     style={styles.filterKeywordInput}
                   />
                   {input ? (
@@ -783,7 +803,7 @@ export function Detail1({}) {
                     >
                       <Ionicons
                         name="close-circle-outline"
-                        style={{ color: 'black', fontSize: 20 }}
+                        style={{ color: colors.text, fontSize: 20 }}
                       />
                     </TouchableOpacity>
                   ) : null}
@@ -804,7 +824,7 @@ export function Detail1({}) {
                     value={fromDate}
                     onChangeText={t => setFromDate(formatDateInput(t))}
                     placeholder="DD/MM/YYYY"
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     keyboardType="number-pad"
                     maxLength={10}
                     style={styles.filterDateInput}
@@ -822,7 +842,7 @@ export function Detail1({}) {
                     value={toDate}
                     onChangeText={t => setToDate(formatDateInput(t))}
                     placeholder="DD/MM/YYYY"
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     keyboardType="number-pad"
                     maxLength={10}
                     style={styles.filterDateInput}
@@ -859,10 +879,11 @@ export function Detail1({}) {
                     }
                   }}
                   isChecked={chosenAgencies.length === AGENCIES.length}
+                  checkBoxColor={filterCheckBoxColor}
                 />
 
                 <Text
-                  style={{ color: 'black', fontWeight: 'bold', marginLeft: 5 }}
+                  style={{ color: colors.text, fontWeight: 'bold', marginLeft: 5 }}
                 >
                   Tất cả
                 </Text>
@@ -886,9 +907,10 @@ export function Detail1({}) {
                       <CheckBox
                         onClick={() => toggleAgency(ag.code)}
                         isChecked={checked}
+                        checkBoxColor={filterCheckBoxColor}
                       />
                       <Text
-                        style={{ marginLeft: 5, color: 'black', flexShrink: 1 }}
+                        style={{ marginLeft: 5, color: colors.text, flexShrink: 1 }}
                       >
                         {ag.name}
                       </Text>
@@ -900,7 +922,7 @@ export function Detail1({}) {
             <TouchableOpacity
               disabled={loading1}
               style={{
-                backgroundColor: 'green',
+                backgroundColor: colors.primary,
                 opacity: loading1 ? 0.6 : 1,
               }}
               onPress={() => {
@@ -926,7 +948,7 @@ export function Detail1({}) {
                   paddingBottom: 10,
                   paddingTop: 10,
                   textAlign: 'center',
-                  color: 'white',
+                  color: colors.onPrimary,
                   fontWeight: 'bold',
                   fontSize: 16,
                 }}
@@ -941,7 +963,7 @@ export function Detail1({}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c, isDark) => ({
   titleText: {
     fontSize: 25,
     alignItems: 'center',
@@ -950,7 +972,7 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     textAlign: 'center',
     fontWeight: 'bold',
-    color: 'white',
+    color: c.onPrimary,
   },
   inputContainer: {
     display: 'flex',
@@ -959,8 +981,8 @@ const styles = StyleSheet.create({
   },
   inputArea: {
     width: '85%',
-    backgroundColor: 'white',
-    color: 'black',
+    backgroundColor: c.inputBg,
+    color: c.text,
     paddingLeft: 12,
     borderRadius: 15,
     paddingTop: 10,
@@ -973,57 +995,58 @@ const styles = StyleSheet.create({
   inputBtb: {
     width: '80%',
     height: 30,
-    backgroundColor: '#f67c1a',
+    backgroundColor: c.warning,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     // right: 5,
   },
   inputBtbText: {
-    color: 'white',
+    // Icon trên nền cam nên giữ trắng ở cả hai theme.
+    color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 20,
   },
   filterLabel: {
-    color: 'black',
+    color: c.text,
     fontWeight: 'bold',
     fontSize: 15,
   },
   filterDateLabel: {
     width: 40,
-    color: 'black',
+    color: c.text,
     fontSize: 14,
   },
   filterDateInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    color: 'black',
+    color: c.text,
   },
   filterKeywordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 8,
   },
   filterKeywordInput: {
     flex: 1,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    color: 'black',
+    color: c.text,
   },
   agencyRowAll: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     paddingLeft: '5%',
-    backgroundColor: 'rgb(240,240,240)',
-    shadowColor: 'black',
+    backgroundColor: isDark ? c.cardAlt : 'rgb(240,240,240)',
+    shadowColor: c.shadow,
     shadowOpacity: 0.5,
     shadowOffset: { width: 5, height: 5 },
     shadowRadius: 4,
@@ -1053,14 +1076,14 @@ const styles = StyleSheet.create({
   },
   chapterText: {
     textAlign: 'center',
-    color: 'black',
+    color: c.text,
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 2,
   },
   descriptionText: {
     textAlign: 'center',
-    color: 'black',
+    color: c.text,
     fontSize: 14,
     textAlign: 'justify',
   },

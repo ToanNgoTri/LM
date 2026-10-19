@@ -11,14 +11,15 @@ import { Provider } from 'react-redux';
 import { store } from './redux/store';
 import {
   View,
-  Text,
   TouchableOpacity,
   Animated,
   ScrollView,
-  Linking,
   Platform,
   BackHandler
 } from 'react-native';
+import { Text, ThemeProvider, useTheme } from './theme';
+import { PolicyParagraphs } from './screens/components/PolicyContent';
+import { compareVersion, openStore } from './utils/appInfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -32,6 +33,7 @@ import {
 } from './storage/userFiles';
 import { SubscriptionProvider } from './subscription/SubscriptionContext';
 import { syncSuggestCache } from './screens/suggestCache';
+import { ensureDefaultLaws } from './utils/defaultLaws';
 const BoxInHomeScreen = createContext();
 // const InfoDownloaded = createContext(); //
 const RefOfHome = createContext(); //
@@ -109,19 +111,8 @@ const APP_CONFIG_URL =
 const REPORT_VERSION_URL =
   'https://us-central1-project2-197c0.cloudfunctions.net/reportLatestVersion';
 
-// So sánh versionName ("1.2.3" hoặc "13"). Trả <0 nếu a cũ hơn b.
-function compareVersion(a, b) {
-  const pa = String(a ?? '0').split('.').map(n => parseInt(n, 10) || 0);
-  const pb = String(b ?? '0').split('.').map(n => parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
-    if (d !== 0) return d < 0 ? -1 : 1;
-  }
-  return 0;
-}
-
-function App() {
+function AppContent() {
+  const { colors } = useTheme();
   const [updateStatus, SetUpdateStatus] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(false);
   // latestVersion lấy từ appConfig, dùng lại trong nút Thoát/Chấp nhận (không gọi Store).
@@ -138,14 +129,6 @@ function App() {
 
   async function getPolicyAppear() {
     return !(await userFileExists(APPEAR_FILE));
-  }
-
-  function openStore() {
-    const url =
-      Platform.OS == 'ios'
-        ? 'https://apps.apple.com/vn/app/th%C6%B0-vi%E1%BB%87n-lu%E1%BA%ADt/id6741737005?l=vi'
-        : 'https://play.google.com/store/apps/details?id=com.lawmachine&pcampaignid=web_share';
-    Linking.openURL(url).catch(err => console.error('Error opening URL: ', err));
   }
 
   async function exitUpdate() {
@@ -245,6 +228,9 @@ function App() {
     // Đồng bộ cache gợi ý ngay khi mở app (chạy nền, không chặn UI).
     // Nhờ vậy lawRelated ở Detail5 luôn có tên mới nhất để tra.
     syncSuggestCache();
+
+    // Người dùng mới cài: tự tải văn bản mặc định (DefaultLaws) vào "Đã tải xuống".
+    ensureDefaultLaws();
   }, []);
 
   // Khi force update: chặn nút back cứng (Android) để không thoát được app.
@@ -286,7 +272,7 @@ function App() {
                 <>
                   <Animated.View
                     style={{
-                      backgroundColor: 'black',
+                      backgroundColor: colors.shadow,
                       left: 0,
                       right: 0,
                       top: 0,
@@ -330,7 +316,7 @@ function App() {
 
                       right: 50,
                       left: 50,
-                      backgroundColor: 'white',
+                      backgroundColor: colors.surface,
                       display: 'flex',
                       borderRadius: 20,
                       transform: [
@@ -338,7 +324,7 @@ function App() {
                         { translateY: -heightNotification / 2 },
                       ],
                       overflow: 'hidden',
-                      shadowColor: 'black',
+                      shadowColor: colors.shadow,
                       shadowOpacity: 1,
                       shadowOffset: {
                         width: 10,
@@ -366,12 +352,13 @@ function App() {
                           <Ionicons
                             name="document-text-outline"
                             size={48}
-                            color="green"
+                            color={colors.primaryText}
                           />
                           <Text
                             style={{
                               fontSize: 26,
                               fontWeight: 'bold',
+                              color: colors.text,
                               marginTop: 10,
                             }}
                           >
@@ -379,80 +366,7 @@ function App() {
                           </Text>
                         </View>
 
-                        {/* Paragraph 1 */}
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            lineHeight: 22,
-                            color: '#333',
-                            paddingHorizontal: 20,
-                            textAlign: 'justify',
-                            marginBottom: 12,
-                          }}
-                        >
-                          Các thông tin, nội dung và dịch vụ mà{' '}
-                          <Text style={{ fontWeight: 'bold' }}>
-                            Sổ Tay Luật
-                          </Text>{' '}
-                          cung cấp chỉ mang tính chất tham khảo, nhằm đem lại
-                          cho người sử dụng cái nhìn tổng quát về các quy định
-                          pháp luật qua từng thời kỳ.
-                        </Text>
-
-                        {/* Paragraph 2 */}
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            lineHeight: 22,
-                            color: '#333',
-                            paddingHorizontal: 20,
-                            textAlign: 'justify',
-                            marginBottom: 12,
-                          }}
-                        >
-                          Do các quy định pháp luật có thể thay đổi, bổ sung
-                          theo từng giai đoạn, người sử dụng khi áp dụng vào các
-                          trường hợp cụ thể cần tham khảo ý kiến của cơ quan nhà
-                          nước có thẩm quyền hoặc chuyên gia tư vấn pháp lý.
-                        </Text>
-
-                        {/* Paragraph 3 */}
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            lineHeight: 22,
-                            color: '#333',
-                            paddingHorizontal: 20,
-                            textAlign: 'justify',
-                            marginBottom: 12,
-                          }}
-                        >
-                          Mặc dù đã nỗ lực hạn chế sai sót, các nội dung pháp
-                          luật được cung cấp vẫn có thể tồn tại lỗi đánh máy,
-                          trình bày hoặc sai lệch về hiệu lực pháp lý. Việc sử
-                          dụng ứng dụng đồng nghĩa với việc chấp nhận các thiếu
-                          sót này và Sổ Tay Luật không chịu trách nhiệm pháp lý
-                          đối với mọi thiệt hại phát sinh (nếu có).
-                        </Text>
-
-                        {/* Footer */}
-                        <Text
-                          style={{
-                            fontSize: 15,
-                            lineHeight: 22,
-                            color: '#333',
-                            paddingHorizontal: 20,
-                            textAlign: 'justify',
-                          }}
-                        >
-                          Ứng dụng được phát triển bởi tập thể{' '}
-                          <Text style={{ fontWeight: 'bold' }}>
-                            Pixel Places Game
-                          </Text>
-                          , không đại diện cho bất kỳ cơ quan nhà nước nào. Xin
-                          chân thành cảm ơn sự tin tưởng và ủng hộ của quý người
-                          dùng.
-                        </Text>
+                        <PolicyParagraphs />
                       </ScrollView>
                     ) : (
                       /* ================= UPDATE ================= */
@@ -472,12 +386,13 @@ function App() {
                           <Ionicons
                             name="cloud-download-outline"
                             size={56}
-                            color="green"
+                            color={colors.primaryText}
                           />
                           <Text
                             style={{
                               fontSize: 26,
                               fontWeight: 'bold',
+                              color: colors.text,
                               marginTop: 12,
                             }}
                           >
@@ -490,7 +405,7 @@ function App() {
                           style={{
                             fontSize: 16,
                             lineHeight: 22,
-                            color: '#444',
+                            color: colors.textSecondary,
                             textAlign: 'center',
                             paddingHorizontal: 24,
                           }}
@@ -505,7 +420,7 @@ function App() {
                     {!updateStatus ? (
                       <TouchableOpacity
                         style={{
-                          backgroundColor: 'green',
+                          backgroundColor: colors.primary,
                         }}
                         onPress={async () => {
                           let timeOut = setTimeout(() => {
@@ -533,7 +448,7 @@ function App() {
                             paddingBottom: 10,
                             paddingTop: 10,
                             textAlign: 'center',
-                            color: 'white',
+                            color: colors.onPrimary,
                             fontWeight: 'bold',
                             fontSize: 16,
                           }}
@@ -544,7 +459,7 @@ function App() {
                     ) : forceUpdate ? (
                       /* ===== FORCE: chỉ có nút Cập nhật, KHÔNG cho thoát ===== */
                       <TouchableOpacity
-                        style={{ backgroundColor: 'green', width: '100%' }}
+                        style={{ backgroundColor: colors.primary, width: '100%' }}
                         onPress={() => openStore()}
                       >
                         <Text
@@ -552,7 +467,7 @@ function App() {
                             paddingBottom: 10,
                             paddingTop: 10,
                             textAlign: 'center',
-                            color: 'white',
+                            color: colors.onPrimary,
                             fontWeight: 'bold',
                             fontSize: 16,
                           }}
@@ -564,7 +479,7 @@ function App() {
                       <View style={{ flexDirection: 'row', width: '100%' }}>
                         <TouchableOpacity
                           style={{
-                            backgroundColor: 'green',
+                            backgroundColor: colors.primary,
                             width: '50%',
                           }}
                           onPress={async () => {
@@ -590,7 +505,7 @@ function App() {
                               paddingBottom: 10,
                               paddingTop: 10,
                               textAlign: 'center',
-                              color: 'white',
+                              color: colors.onPrimary,
                               fontWeight: 'bold',
                               fontSize: 16,
                             }}
@@ -600,9 +515,9 @@ function App() {
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={{
-                            backgroundColor: 'green',
+                            backgroundColor: colors.primary,
                             width: '50%',
-                            borderLeftColor: 'white',
+                            borderLeftColor: colors.onPrimary,
                             borderLeftWidth: 1,
                           }}
                           onPress={async () => {
@@ -625,7 +540,7 @@ function App() {
                               paddingBottom: 10,
                               paddingTop: 10,
                               textAlign: 'center',
-                              color: 'white',
+                              color: colors.onPrimary,
                               fontWeight: 'bold',
                               fontSize: 16,
                             }}
@@ -670,6 +585,14 @@ function App() {
         </View> */}
 
     </GestureHandlerRootView>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 

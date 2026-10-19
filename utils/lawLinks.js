@@ -59,13 +59,70 @@ export function splitLawLinks(text, sources) {
   }
 
   ranges.sort((a, b) => a.start - b.start);
+  linkArticles(text, sources, ranges, overlaps);
+  ranges.sort((a, b) => a.start - b.start);
+
   const parts = [];
   let pos = 0;
   for (const r of ranges) {
     if (r.start > pos) parts.push({ text: text.slice(pos, r.start) });
-    parts.push({ text: text.slice(r.start, r.end), lawId: r.lawId });
+    const part = { text: text.slice(r.start, r.end), lawId: r.lawId };
+    if (r.article) part.article = r.article;
+    parts.push(part);
     pos = r.end;
   }
   if (pos < text.length) parts.push({ text: text.slice(pos) });
   return parts;
+}
+
+// "Điều 5" trong câu trả lời -> link mở văn bản và cuộn tới Điều 5.
+// Gán văn bản cho từng "Điều N" theo thứ tự:
+//   1) văn bản trong sources có đúng Điều N trong CONTEXT (server gửi
+//      `articles`), nếu chỉ một văn bản có -> chắc chắn;
+//   2) số văn bản gần nhất đứng SAU trên cùng dòng ("khoản 2 Điều 5 Luật
+//      ... số 45/2019/QH14"), rồi số văn bản gần nhất đứng TRƯỚC ("Căn cứ ...
+//      số 45/2019/QH14 ... Điều 5.") — trong số văn bản ứng viên ở bước 1;
+//   3) chỉ có một văn bản -> lấy văn bản đó.
+const ARTICLE_REGEX = /(?<![0-9A-Za-zÀ-ỹĐđ])[Đđ]iều\s+(\d+[a-zđ]?)(?![0-9A-Za-zÀ-ỹĐđ])/gu;
+
+// "Điều 5. Tên điều" -> "5"; tiêu đề trong phụ lục ("Phụ lục I - Điều 5") bỏ qua
+// vì Detail5 chỉ nhảy tới Điều của văn bản chính.
+export const articleNo = title => {
+  const m = String(title).match(/^\s*Điều\s+(\d+[a-zđ]?)(?:[.:\s]|$)/iu);
+  return m ? m[1].toLowerCase() : null;
+};
+
+function linkArticles(text, sources, ranges, overlaps) {
+  const lawRanges = ranges.slice();
+  const ids = [...new Set((sources || []).map(s => s && s.id).filter(Boolean))];
+  const added = [];
+
+  for (const m of text.matchAll(ARTICLE_REGEX)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (overlaps(start, end)) continue;
+    const no = m[1].toLowerCase();
+
+    const withArticle = (sources || [])
+      .filter(s => s && s.id && (s.articles || []).some(t => articleNo(t) === no))
+      .map(s => s.id);
+    const allowed = withArticle.length ? withArticle : null;
+    const ok = r => !allowed || allowed.includes(r.lawId);
+
+    let lawId = withArticle.length === 1 ? withArticle[0] : null;
+    if (!lawId) {
+      const after = lawRanges.find(
+        r => r.start >= end && ok(r) && r.start - end <= 120 &&
+          !text.slice(end, r.start).includes('\n'),
+      );
+      const before = [...lawRanges].reverse().find(r => r.end <= start && ok(r));
+      lawId = (after || before || {}).lawId || null;
+    }
+    if (!lawId && allowed) lawId = allowed[0];
+    if (!lawId && ids.length === 1) lawId = ids[0];
+    if (!lawId) continue;
+
+    added.push({ start, end, lawId, article: no });
+  }
+  ranges.push(...added);
 }

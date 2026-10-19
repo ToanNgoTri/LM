@@ -1,0 +1,4 @@
+<resources>
+    <!-- Máy bật chế độ tối: nền cửa sổ tối để không loé trắng lúc mở app -->
+    <color name="app_background">#0D0D14</color>
+</resources>

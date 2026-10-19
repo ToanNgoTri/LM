@@ -1,10 +1,7 @@
 import React, { useEffect, useState, useRef, memo, useCallback } from 'react';
 import {
-  Text,
-  StyleSheet,
   View,
   TouchableOpacity,
-  TextInput,
   Keyboard,
   Animated,
   FlatList,
@@ -27,6 +24,7 @@ import { PaywallModal } from '../subscription/PaywallModal';
 import MicButton from './components/MicButton';
 import { splitLawLinks } from '../utils/lawLinks';
 import { ChatHistoryDrawer } from './components/ChatHistoryDrawer';
+import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 import {
   loadHistory,
   saveHistory,
@@ -53,11 +51,11 @@ const INPUT_BAR_GAP = 10;
 // Cách đáy bao nhiêu thì hiện nút "cuộn xuống cuối".
 const SCROLL_DOWN_SHOW_PX = 250;
 
-const API_URL = 'https://us-central1-project2-197c0.cloudfunctions.net/askLawAI';
+const API_URL = 'http://10.0.2.2:5002/project2-197c0/us-central1/askLawAI'; // TEMP-EMU
 // Lấy lại câu trả lời mà server vẫn sinh tiếp khi app bị HĐH tạm dừng (user out
 // ra app khác). Xem functions/index.js -> getLawAIAnswer.
 const ANSWER_URL =
-  'https://us-central1-project2-197c0.cloudfunctions.net/getLawAIAnswer';
+  'http://10.0.2.2:5002/project2-197c0/us-central1/getLawAIAnswer'; // TEMP-EMU
 // Nhịp hỏi lại server khi câu trả lời còn đang được sinh.
 const RESUME_POLL_MS = 1500;
 // Trần chờ khi resume (~90s) — đủ cho một câu dài, tránh hỏi vô hạn.
@@ -150,6 +148,7 @@ const formatTime = date => {
 };
 
 const TypingIndicator = memo(() => {
+  const styles = useThemedStyles(makeStyles);
   const dots = [
     useRef(new Animated.Value(0)).current,
     useRef(new Animated.Value(0)).current,
@@ -211,15 +210,17 @@ const TypingIndicator = memo(() => {
   );
 });
 
-// Số văn bản trong câu trả lời AI -> link mở văn bản (Detail5).
+// Số văn bản / "Điều N" trong câu trả lời AI -> link mở văn bản (Detail5),
+// link Điều thì cuộn tới đúng Điều đó.
 const AnswerText = memo(({ text, sources, onOpenLaw }) => {
+  const styles = useThemedStyles(makeStyles);
   const parts = splitLawLinks(text, sources);
   return parts.map((p, i) =>
     p.lawId ? (
       <Text
         key={i}
         style={styles.lawLink}
-        onPress={() => onOpenLaw?.(p.lawId)}
+        onPress={() => onOpenLaw?.(p.lawId, p.article)}
         suppressHighlighting={false}
       >
         {p.text}
@@ -231,6 +232,8 @@ const AnswerText = memo(({ text, sources, onOpenLaw }) => {
 });
 
 const MessageBubble = memo(({ item, onCopy, onOpenLaw }) => {
+  const styles = useThemedStyles(makeStyles);
+  const { colors, isDark } = useTheme();
   const isUser = item.role === 'user';
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(16)).current;
@@ -300,7 +303,11 @@ const MessageBubble = memo(({ item, onCopy, onOpenLaw }) => {
               style={styles.copyBtn}
               activeOpacity={0.6}
             >
-              <Ionicons name="copy-outline" size={13} color="#7A7A9C" />
+              <Ionicons
+                name="copy-outline"
+                size={13}
+                color={isDark ? '#7A7A9C' : colors.textMuted}
+              />
               <Text style={styles.copyBtnText}>Sao chép</Text>
             </TouchableOpacity>
           )}
@@ -313,6 +320,8 @@ const MessageBubble = memo(({ item, onCopy, onOpenLaw }) => {
 export const AIChatScreen = () => {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
+  const styles = useThemedStyles(makeStyles);
+  const { colors, isDark } = useTheme();
 
   const {
     isPremium,
@@ -471,6 +480,21 @@ export const AIChatScreen = () => {
   useEffect(() => {
     isFocusedRef.current = isFocused;
   }, [isFocused]);
+
+  // Thanh trạng thái: tab này luôn được mount nên KHÔNG đặt <StatusBar> cố định
+  // (sẽ đè thanh chung của ThemeProvider). Chỉ lúc đang focus mới đổi theo nền
+  // khung chat (bản sáng nền trắng -> icon tối), rời màn thì trả lại màu chung.
+  useEffect(() => {
+    if (!isFocused) return;
+    StatusBar.setBarStyle(isDark ? 'light-content' : 'dark-content', true);
+    if (Platform.OS === 'android') StatusBar.setBackgroundColor(colors.bg, true);
+    return () => {
+      StatusBar.setBarStyle(colors.statusBarStyle, true);
+      if (Platform.OS === 'android') {
+        StatusBar.setBackgroundColor(colors.statusBar, true);
+      }
+    };
+  }, [isFocused, isDark, colors]);
 
   // Cho phép auto-scroll xuống đáy khi đang stream. Khi user tự cuộn lên trên
   // (rời khỏi đáy) -> tắt; khi user cuộn về sát đáy -> bật lại.
@@ -1257,7 +1281,12 @@ try {
 
   const navigation = useNavigation();
   const openLaw = useCallback(
-    lawId => navigation.navigate('accessLaw', { screen: lawId }),
+    (lawId, article) =>
+      navigation.navigate('accessLaw', {
+        screen: lawId,
+        // jumpAt đổi mỗi lần bấm -> bấm lại cùng Điều vẫn cuộn tới
+        ...(article ? { article, jumpAt: Date.now() } : {}),
+      }),
     [navigation],
   );
 
@@ -1335,13 +1364,11 @@ try {
         <View style={{ height: 12 }} />
       </>
     ),
-    [isTyping],
+    [isTyping, styles],
   );
 
   return (
     <View ref={rootRef} style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0D0D14" />
-
       {/* Danh sách chiếm trọn màn hình và chạy XUYÊN qua thanh tiêu đề: phần
           đệm trên của contentContainer chỉ đủ để tin nhắn đầu tiên không bị
           che, cuộn lên thì thấy chữ lướt sau tiêu đề trong suốt. */}
@@ -1395,7 +1422,11 @@ try {
           onPress={() => scrollToBottom(true)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-down" size={18} color="#E0E0F4" />
+          <Ionicons
+            name="arrow-down"
+            size={18}
+            color={isDark ? '#E0E0F4' : colors.textSecondary}
+          />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1421,7 +1452,7 @@ try {
             value={inputText}
             onChangeText={setInputText}
             placeholder="Nhập câu hỏi pháp luật..."
-            placeholderTextColor="#4A4A68"
+            placeholderTextColor={isDark ? '#4A4A68' : colors.placeholder}
             multiline
             maxLength={2000}
             returnKeyType="send"
@@ -1436,7 +1467,7 @@ try {
               onPress={handleStopStreaming}
               activeOpacity={0.8}
             >
-              <Ionicons name="stop" size={16} color="#fff" />
+              <Ionicons name="stop" size={16} color={colors.onAccent} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -1451,7 +1482,13 @@ try {
               <Ionicons
                 name="arrow-up"
                 size={18}
-                color={inputText.trim() ? '#fff' : '#3A3A58'}
+                color={
+                  inputText.trim()
+                    ? colors.onAccent
+                    : isDark
+                    ? '#3A3A58'
+                    : '#B4B4C4'
+                }
               />
             </TouchableOpacity>
           )}
@@ -1477,7 +1514,7 @@ try {
               }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="menu" size={20} color="#fff" />
+              <Ionicons name="menu" size={20} color={colors.onAccent} />
             </TouchableOpacity>
             {/* <Text style={styles.headerTitle}>Trợ lý Luật AI</Text> */}
           </View>
@@ -1490,7 +1527,11 @@ try {
               onPress={startNewChat}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="create-outline" size={20} color="#E0E0F4" />
+              <Ionicons
+                name="create-outline"
+                size={20}
+                color={isDark ? '#E0E0F4' : colors.textSecondary}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -1524,289 +1565,320 @@ try {
   );
 };
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0D0D14' },
+// '#RRGGBB' -> 'r,g,b' để dựng dải loang giữ nguyên RGB nền, chỉ đổi alpha.
+const hexToRgb = hex => {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map(x => x + x).join('');
+  return [0, 2, 4].map(k => parseInt(h.slice(k, k + 2), 16)).join(',');
+};
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#0D0D14',
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#6C63FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  headerTitle: {
-    color: '#F0F0FA',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  streamingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: '#1A1A2E',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#252540',
-  },
-  streamingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#22D3A0',
-  },
-  streamingText: { color: '#22D3A0', fontSize: 11, fontWeight: '500' },
+// Bản tối giữ nguyên giao diện Chat AI cũ; bản sáng: nền trắng, bong bóng AI
+// xám nhạt chữ tối, bong bóng user tím chữ trắng, viền mảnh sáng.
+const makeStyles = (c, isDark) => {
+  const bgRgb = hexToRgb(c.bg);
+  // Bong bóng AI / nút phụ trên nền màn hình.
+  const bubbleBg = isDark ? c.card : c.bgAlt;
+  const bubbleBorder = isDark ? c.cardAlt : c.divider;
+  const softText = isDark ? '#E0E0F4' : c.text;
+  return {
+    root: { flex: 1, backgroundColor: c.bg },
 
-  // Tiêu đề KHÔNG phủ nền đặc kín: nền chuyển tuyến tính từ đặc ở trên xuống
-  // trong suốt hoàn toàn ở dưới. Tin nhắn cuộn lên là mờ dần rồi khuất hẳn,
-  // không bị cắt ngang một nhát ở mép thanh.
-  topOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: HEADER_FADE,
-    experimental_backgroundImage:
-      // Chỉ dải trên cùng là đặc kín (10% chiều cao khối), rồi loang tuyến tính
-      // một mạch tới mép dưới: hàng icon/pill nằm GIỮA đoạn loang nên nhìn
-      // xuyên qua được. Giữ nguyên RGB nền, chỉ hạ alpha, để đoạn loang không
-      // bị ngả xám.
-      'linear-gradient(to bottom, rgba(13,13,20,1) 0%, rgba(13,13,20,1) 10%, rgba(13,13,20,0) 100%)',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-  },
-  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // Nằm trong inputRow, đối xứng với sendBtn -> cùng kích thước 36.
-  resetBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
-  },
-  trialPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: '#12251A',
-    borderWidth: 1,
-    borderColor: '#2C4A38',
-  },
-  trialPillText: { color: '#7FE3A1', fontSize: 12, fontWeight: '700' },
-  premiumPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255,212,121,0.12)',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,212,121,0.35)',
-  },
-  premiumPillText: { color: '#FFD479', fontSize: 12, fontWeight: '700' },
-  freePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingLeft: 12,
-    paddingRight: 5,
-    paddingVertical: 5,
-    backgroundColor: '#1A1A2E',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#252540',
-  },
-  freePillText: { color: '#9A9AB8', fontSize: 12, fontWeight: '600' },
-  upgradeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#6C63FF',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  upgradeChipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  expiryText: {
-    color: '#5A5A78',
-    fontSize: 11,
-    paddingHorizontal: 16,
-    paddingBottom: 4,
-    textAlign: 'right',
-  },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: c.bg,
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    headerAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: c.accent,
+      shadowOpacity: isDark ? 0.5 : 0.3,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: isDark ? 8 : 4,
+    },
+    headerTitle: {
+      color: c.text,
+      fontSize: 16,
+      fontWeight: '700',
+      letterSpacing: 0.2,
+    },
+    streamingBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      backgroundColor: bubbleBg,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: bubbleBorder,
+    },
+    streamingDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: c.success,
+    },
+    streamingText: { color: c.success, fontSize: 11, fontWeight: '500' },
 
-  listContent: { paddingHorizontal: 16, paddingTop: 12 },
+    // Tiêu đề KHÔNG phủ nền đặc kín: nền chuyển tuyến tính từ đặc ở trên xuống
+    // trong suốt hoàn toàn ở dưới. Tin nhắn cuộn lên là mờ dần rồi khuất hẳn,
+    // không bị cắt ngang một nhát ở mép thanh.
+    topOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      paddingBottom: HEADER_FADE,
+      experimental_backgroundImage:
+        // Chỉ dải trên cùng là đặc kín (10% chiều cao khối), rồi loang tuyến tính
+        // một mạch tới mép dưới: hàng icon/pill nằm GIỮA đoạn loang nên nhìn
+        // xuyên qua được. Giữ nguyên RGB nền, chỉ hạ alpha, để đoạn loang không
+        // bị ngả xám.
+        `linear-gradient(to bottom, rgba(${bgRgb},1) 0%, rgba(${bgRgb},1) 10%, rgba(${bgRgb},0) 100%)`,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingBottom: 6,
+    },
+    topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    // Nằm trong inputRow, đối xứng với sendBtn -> cùng kích thước 36.
+    resetBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: bubbleBg,
+    },
+    trialPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor: isDark ? '#12251A' : '#E6F6EC',
+      borderWidth: 1,
+      borderColor: isDark ? '#2C4A38' : '#B9E4C8',
+    },
+    trialPillText: {
+      color: isDark ? '#7FE3A1' : '#1E8A4A',
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    premiumPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: 'rgba(255,212,121,0.12)',
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: 'rgba(255,212,121,0.35)',
+    },
+    premiumPillText: {
+      color: isDark ? '#FFD479' : '#B7791F',
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    freePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingLeft: 12,
+      paddingRight: 5,
+      paddingVertical: 5,
+      backgroundColor: bubbleBg,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: bubbleBorder,
+    },
+    freePillText: { color: c.textMuted, fontSize: 12, fontWeight: '600' },
+    upgradeChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: c.accent,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    upgradeChipText: { color: c.onAccent, fontSize: 11, fontWeight: '700' },
+    expiryText: {
+      color: isDark ? '#5A5A78' : c.textMuted,
+      fontSize: 11,
+      paddingHorizontal: 16,
+      paddingBottom: 4,
+      textAlign: 'right',
+    },
 
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 12,
-  },
-  messageRowUser: { justifyContent: 'flex-end' },
-  messageRowAssistant: { justifyContent: 'flex-start' },
-  bubble: {
-    maxWidth: SCREEN_WIDTH * 0.78,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleUser: { backgroundColor: '#6C63FF', borderBottomRightRadius: 4 },
-  // Không còn avatar chiếm chỗ bên trái nên bong bóng sát lề; chỉ nới bề
-  // ngang vừa đủ để MÉP PHẢI đứng lại đúng chỗ cũ, không ăn hết màn hình.
-  bubbleAssistant: {
-    maxWidth: SCREEN_WIDTH * 0.82,
-    backgroundColor: '#1A1A2E',
-    borderWidth: 1,
-    borderColor: '#252540',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleText: { fontSize: 14.5, lineHeight: 21 },
-  bubbleTextUser: { color: '#FFFFFF' },
-  bubbleTextAssistant: { color: '#E0E0F4' },
-  lawLink: { color: '#7FB2FF', textDecorationLine: 'underline' },
-  bubbleFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 5,
-    gap: 10,
-  },
-  timestamp: { fontSize: 10 },
-  timestampUser: { color: 'rgba(255,255,255,0.5)', textAlign: 'right' },
-  timestampAssistant: { color: '#404060' },
-  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  copyBtnText: { fontSize: 11, color: '#7A7A9C', fontWeight: '600' },
+    listContent: { paddingHorizontal: 16, paddingTop: 12 },
 
-  typingBubble: {
-    backgroundColor: '#1A1A2E',
-    borderWidth: 1,
-    borderColor: '#252540',
-    borderRadius: 18,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  typingDots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6C63FF' },
+    messageRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      marginBottom: 12,
+    },
+    messageRowUser: { justifyContent: 'flex-end' },
+    messageRowAssistant: { justifyContent: 'flex-start' },
+    bubble: {
+      maxWidth: SCREEN_WIDTH * 0.78,
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    bubbleUser: { backgroundColor: c.accent, borderBottomRightRadius: 4 },
+    // Không còn avatar chiếm chỗ bên trái nên bong bóng sát lề; chỉ nới bề
+    // ngang vừa đủ để MÉP PHẢI đứng lại đúng chỗ cũ, không ăn hết màn hình.
+    bubbleAssistant: {
+      maxWidth: SCREEN_WIDTH * 0.82,
+      backgroundColor: bubbleBg,
+      borderWidth: 1,
+      borderColor: bubbleBorder,
+      borderBottomLeftRadius: 4,
+    },
+    bubbleText: { fontSize: 14.5, lineHeight: 21 },
+    bubbleTextUser: { color: c.onAccent },
+    bubbleTextAssistant: { color: softText },
+    lawLink: {
+      color: isDark ? '#7FB2FF' : '#2F6FDB',
+      textDecorationLine: 'underline',
+    },
+    bubbleFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 5,
+      gap: 10,
+    },
+    timestamp: { fontSize: 10 },
+    timestampUser: { color: 'rgba(255,255,255,0.5)', textAlign: 'right' },
+    timestampAssistant: { color: isDark ? '#404060' : c.textMuted },
+    copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    copyBtnText: {
+      fontSize: 11,
+      color: isDark ? '#7A7A9C' : c.textMuted,
+      fontWeight: '600',
+    },
 
-  // Khung ngoài chỉ để định vị: trong suốt hoàn toàn, không nền, không nét
-  // ngăn — tin nhắn chạy được xuống tận đáy màn hình phía sau nó.
-  newChatHeaderBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
-    borderWidth: 1,
-    borderColor: '#252540',
-  },
-  scrollDownWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  scrollDownBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1F1F33',
-    borderWidth: 1,
-    borderColor: '#33334F',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 6,
-  },
-  inputBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    backgroundColor: '#13131F',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#252540',
-    // Hai đầu đều có nút -> padding cân nhau.
-    paddingLeft: 6,
-    paddingRight: 6,
-    paddingVertical: 6,
-    // Hộp nổi trên nội dung -> cần đổ bóng để tách khỏi chữ chạy phía sau.
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
-  },
-  input: {
-    flex: 1,
-    color: '#E8E8FA',
-    fontSize: 14.5,
-    lineHeight: 20,
-    maxHeight: 110,
-    paddingTop: Platform.OS === 'ios' ? 8 : 6,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 6,
-  },
-  sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendBtnActive: {
-    backgroundColor: '#6C63FF',
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-  },
-  sendBtnInactive: { backgroundColor: '#1A1A2E' },
-  stopBtn: {
-    backgroundColor: '#E5484D',
-    shadowColor: '#E5484D',
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-  },
-});
+    typingBubble: {
+      backgroundColor: bubbleBg,
+      borderWidth: 1,
+      borderColor: bubbleBorder,
+      borderRadius: 18,
+      borderBottomLeftRadius: 4,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    typingDots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+    dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent },
+
+    // Khung ngoài chỉ để định vị: trong suốt hoàn toàn, không nền, không nét
+    // ngăn — tin nhắn chạy được xuống tận đáy màn hình phía sau nó.
+    newChatHeaderBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: bubbleBg,
+      borderWidth: 1,
+      borderColor: isDark ? c.cardAlt : c.border,
+    },
+    scrollDownWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    scrollDownBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? '#1F1F33' : c.surface,
+      borderWidth: 1,
+      borderColor: isDark ? '#33334F' : c.border,
+      shadowColor: c.shadow,
+      shadowOpacity: isDark ? 0.4 : 0.15,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: isDark ? 6 : 3,
+    },
+    inputBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      paddingHorizontal: 12,
+      paddingBottom: 8,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 8,
+      backgroundColor: isDark ? c.surface : c.inputBg,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: isDark ? c.cardAlt : '#E3E3EA',
+      // Hai đầu đều có nút -> padding cân nhau.
+      paddingLeft: 6,
+      paddingRight: 6,
+      paddingVertical: 6,
+      // Hộp nổi trên nội dung -> cần đổ bóng để tách khỏi chữ chạy phía sau.
+      shadowColor: c.shadow,
+      shadowOpacity: isDark ? 0.4 : 0.08,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: isDark ? 5 : 3,
+    },
+    input: {
+      flex: 1,
+      color: isDark ? '#E8E8FA' : c.text,
+      fontSize: 14.5,
+      lineHeight: 20,
+      maxHeight: 110,
+      paddingTop: Platform.OS === 'ios' ? 8 : 6,
+      paddingBottom: Platform.OS === 'ios' ? 8 : 6,
+    },
+    sendBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sendBtnActive: {
+      backgroundColor: c.accent,
+      shadowColor: c.accent,
+      shadowOpacity: isDark ? 0.5 : 0.3,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: isDark ? 6 : 3,
+    },
+    sendBtnInactive: { backgroundColor: isDark ? c.card : c.cardAlt },
+    stopBtn: {
+      backgroundColor: isDark ? '#E5484D' : c.danger,
+      shadowColor: isDark ? '#E5484D' : c.danger,
+      shadowOpacity: isDark ? 0.5 : 0.3,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: isDark ? 6 : 3,
+    },
+  };
+};

@@ -1,11 +1,8 @@
 import {
-  StyleSheet,
-  Text,
   View,
   ScrollView,
   FlatList,
   TouchableOpacity,
-  TextInput,
   Keyboard,
   Alert,
   Animated,
@@ -37,12 +34,15 @@ import {
   BOOKMARKS_FILE,
   DOWNLOADED_FILE,
   ORDER_FILE,
-  SETTINGS_FILE,
   readUserJson,
+  readUserSettings,
+  updateUserSettings,
   writeUserJson,
 } from '../storage/userFiles';
+import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 import { LawTable } from './components/LawTable';
 import { isAppendixKey, parseAppendixTitle } from '../utils/lawAppendix';
+import { articleNo } from '../utils/lawLinks';
 import {
   hasTableMarks,
   indexTables,
@@ -83,15 +83,18 @@ const FONT_DEFAULT = 14;
 const FONT_MIN = 11;
 const FONT_MAX = 26;
 
+const clampFontSize = v => Math.min(FONT_MAX, Math.max(FONT_MIN, v));
+
+// Cỡ chữ người dùng tự chọn ở màn này; null = chưa chọn -> theo cỡ chữ toàn app.
 async function loadFontSize() {
-  const s = (await readUserJson(SETTINGS_FILE, {})) || {};
+  const s = await readUserSettings();
   const v = Number(s.fontSize);
-  return v >= FONT_MIN && v <= FONT_MAX ? v : FONT_DEFAULT;
+  return v >= FONT_MIN && v <= FONT_MAX ? v : null;
 }
 
-async function saveFontSize(fontSize) {
-  const s = (await readUserJson(SETTINGS_FILE, {})) || {};
-  await writeUserJson(SETTINGS_FILE, { ...s, fontSize });
+// null -> xoá giá trị riêng, quay về theo cỡ chữ toàn app.
+function saveFontSize(fontSize) {
+  return updateUserSettings({ fontSize: fontSize ?? undefined });
 }
 
 // Định dạng ngày dd/mm/yyyy; ngày rỗng/sai -> '' (Intl.format ném RangeError
@@ -126,6 +129,11 @@ function SidePanel({
   inputSearchArtical,
   setInputSearchArtical,
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // thanh tiêu đề panel: nền đen ở bản sáng như cũ
+  const panelHeaderBg = isDark ? '#2A2A48' : '#000000';
+  const panelHeaderText = isDark ? colors.text : colors.textInverse;
   // Chiều cao thanh chức năng để panel dừng đúng phía trên nó.
   const functionTabHeight = FUNCTION_TAB_CONTENT_HEIGHT + useBottomBarInset();
   // const [inputSearchArtical, setInputSearchArtical] = useState('');
@@ -172,7 +180,10 @@ function SidePanel({
         >
           <Ionicons
             name={isMarked ? 'star' : 'star-outline'}
-            style={{ fontSize: 20, color: isMarked ? '#FFB300' : 'gray' }}
+            style={{
+              fontSize: 20,
+              color: isMarked ? colors.star : colors.textMuted,
+            }}
           ></Ionicons>
         </TouchableOpacity>
       </View>
@@ -183,7 +194,7 @@ function SidePanel({
     <>
       <Animated.View
         style={{
-          backgroundColor: 'rgb(245,245,247)',
+          backgroundColor: isDark ? '#000000' : 'rgb(245,245,247)',
           left: 0,
           right: 0,
           top: 0,
@@ -218,9 +229,13 @@ function SidePanel({
         <View
           style={{
             flexDirection: 'row',
-            backgroundColor: 'black',
+            backgroundColor: panelHeaderBg,
             height: 50,
             justifyContent: 'center',
+            ...(isDark && {
+              borderBottomWidth: 2,
+              borderBottomColor: colors.accent,
+            }),
           }}
         >
           {mode === 'article' ? (
@@ -233,12 +248,12 @@ function SidePanel({
                 style={{
                   paddingLeft: 10,
                   paddingRight: 10,
-                  color: 'white',
+                  color: panelHeaderText,
                   width: '85%',
                   alignItems: 'center',
                 }}
                 placeholder=" Nhập từ điều luật ..."
-                placeholderTextColor={'gray'}
+                placeholderTextColor={colors.placeholder}
               ></TextInput>
               <TouchableOpacity
                 onPress={() => {
@@ -257,10 +272,10 @@ function SidePanel({
                     style={{
                       height: 20,
                       width: 20,
-                      color: 'white',
+                      color: colors.textInverse,
                       textAlign: 'center',
                       verticalAlign: 'middle',
-                      backgroundColor: 'gray',
+                      backgroundColor: colors.textMuted,
                       borderRadius: 25,
                     }}
                   >
@@ -274,7 +289,7 @@ function SidePanel({
               style={{
                 textAlign: 'center',
                 padding: 10,
-                color: 'white',
+                color: panelHeaderText,
                 fontWeight: 'bold',
                 fontSize: 20,
                 fontFamily: 'Inter-Bold',
@@ -330,9 +345,17 @@ export function Detail5() {
 
   const [inputSearchArtical, setInputSearchArtical] = useState('');
 
+  const { colors, isDark, fontScale } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+
   // Cỡ chữ nội dung; lineHeight scale theo cùng tỉ lệ với mặc định (14 -> 23)
   // để giữ quy tắc lineHeight của lines không lớn hơn highlight.
-  const [fontSize, setFontSize] = useState(FONT_DEFAULT);
+  // customFontSize: cỡ người dùng tự chỉnh bằng A-/A+ (null = chưa chỉnh) ->
+  // khi chưa chỉnh thì theo cỡ chữ toàn app (FONT_DEFAULT * fontScale).
+  // Chữ nội dung dùng noScale để không bị nhân fontScale thêm lần nữa.
+  const [customFontSize, setCustomFontSize] = useState(null);
+  const fontSize =
+    customFontSize ?? clampFontSize(Math.round(FONT_DEFAULT * fontScale));
   const [showFontPanel, setShowFontPanel] = useState(false);
   const lineHeight = Math.round((fontSize * 23) / FONT_DEFAULT);
   const dieuLineHeight = Math.round((fontSize * 22) / FONT_DEFAULT);
@@ -348,14 +371,21 @@ export function Detail5() {
   };
 
   useEffect(() => {
-    loadFontSize().then(setFontSize);
+    loadFontSize().then(setCustomFontSize);
   }, []);
 
   function changeFontSize(next) {
-    const v = Math.min(FONT_MAX, Math.max(FONT_MIN, next));
+    const v = clampFontSize(next);
     if (v === fontSize) return;
-    setFontSize(v);
+    setCustomFontSize(v);
     saveFontSize(v);
+  }
+
+  // "Mặc định": bỏ cỡ riêng, quay về theo cỡ chữ toàn app
+  function resetFontSize() {
+    if (customFontSize == null) return;
+    setCustomFontSize(null);
+    saveFontSize(null);
   }
 
   const dispatch = useDispatch();
@@ -396,6 +426,7 @@ export function Detail5() {
     const isMarked = bookmarks.includes(title);
     return (
       <Text
+        noScale
         onLongPress={() => selectWholeDieu(dieuId, title, clauses)}
         onPress={() => pressDieu(dieuId, title, clauses)}
         suppressHighlighting={true}
@@ -403,6 +434,7 @@ export function Detail5() {
           styles.dieu,
           { fontSize, lineHeight: dieuLineHeight },
           isDieuSelected(dieuId) ? styles.copiedBg : null,
+          title === jumpTitle ? styles.jumpBg : null,
         ]}
       >
         {highlight(label, valueInput, true)}
@@ -413,7 +445,10 @@ export function Detail5() {
           {'   '}
           <Ionicons
             name={isMarked ? 'star' : 'star-outline'}
-            style={{ fontSize: 20, color: isMarked ? '#FFB300' : 'gray' }}
+            style={{
+              fontSize: 20,
+              color: isMarked ? colors.star : colors.textMuted,
+            }}
           />
           {'   '}
         </Text>
@@ -474,6 +509,33 @@ export function Detail5() {
   const bottomInset = useBottomBarInset();
 
   const functionTabHeight = FUNCTION_TAB_CONTENT_HEIGHT + bottomInset;
+
+  // Chỉ nâng thanh tìm kiếm lên đỉnh bàn phím (thay cho KeyboardAvoidingView
+  // bọc cả màn hình: nó đẩy cả layout lên, lộ khoảng nền đen phía dưới).
+  const keyboardLift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const isIOS = Platform.OS === 'ios';
+    const move = (toValue, duration) =>
+      Animated.timing(keyboardLift, {
+        toValue,
+        duration: isIOS ? duration || 250 : 120,
+        useNativeDriver: true,
+      }).start();
+    const showSub = Keyboard.addListener(
+      isIOS ? 'keyboardWillShow' : 'keyboardDidShow',
+      e =>
+        // findArea đang nằm sát đỉnh thanh chức năng -> chỉ nâng phần chênh
+        move(-Math.max(0, e.endCoordinates.height - functionTabHeight), e.duration),
+    );
+    const hideSub = Keyboard.addListener(
+      isIOS ? 'keyboardWillHide' : 'keyboardDidHide',
+      e => move(0, e?.duration),
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [functionTabHeight]);
 
   const list = useRef(null);
   const textInputFind = useRef(null);
@@ -711,6 +773,7 @@ export function Detail5() {
             if (!i) {
               return [
                 <Text
+                  noScale
                   style={{
                     ...(article ? { ...styles.dieu } : {}),
                     fontSize,
@@ -770,6 +833,7 @@ export function Detail5() {
                   ></View>
                 </View>
                 <Text
+                  noScale
                   style={
                     searchResultCount - inputRexgex.length + i - 1 <
                       currentSearchPoint &&
@@ -796,6 +860,7 @@ export function Detail5() {
                 </Text>
               </React.Fragment>,
               <Text
+                noScale
                 key={`${i}vvv`}
                 style={{
                   ...(article ? { ...styles.dieu } : {}),
@@ -810,16 +875,27 @@ export function Detail5() {
           }, []);
         return (
           <View>
-            <Text style={[{ textAlign: 'justify', fontSize, lineHeight }, textStyle]}>
+            <Text
+              noScale
+              style={[{ textAlign: 'justify', fontSize, lineHeight }, textStyle]}
+            >
               {searchedPara}
             </Text>
           </View>
         );
       } else {
-        return <Text style={textStyle}>{text}</Text>;
+        return (
+          <Text noScale style={textStyle}>
+            {text}
+          </Text>
+        );
       }
     } else {
-      return <Text style={textStyle}>{text}</Text>;
+      return (
+        <Text noScale style={textStyle}>
+          {text}
+        </Text>
+      );
     }
   }
 
@@ -846,6 +922,35 @@ export function Detail5() {
       return [...prev, { [key3]: value }];
     });
   }
+
+  // Mở từ link "Điều N" của Chat AI (params.article): chờ các Điều đo xong vị
+  // trí (debounce — vị trí còn nhảy khi nội dung đang layout) rồi cuộn tới và
+  // tô nền Điều đó một lúc. jumpAt đổi mỗi lần bấm link -> bấm lại vẫn cuộn.
+  const [jumpTitle, setJumpTitle] = useState(null);
+  const jumpDoneRef = useRef(null);
+  const jumpArticle = route.params?.article;
+  const jumpAt = route.params?.jumpAt;
+  useEffect(() => {
+    if (!jumpArticle) return;
+    const jumpKey = `${jumpArticle}|${jumpAt || ''}`;
+    if (jumpDoneRef.current === jumpKey) return;
+    const no = String(jumpArticle).toLowerCase();
+    const hit = positionYArrArtical.find(o => articleNo(Object.keys(o)[0]) === no);
+    if (!hit) return;
+    const [title, y] = Object.entries(hit)[0];
+    const t = setTimeout(() => {
+      jumpDoneRef.current = jumpKey;
+      list.current?.scrollTo({ y: Math.max(0, y - 55) });
+      setJumpTitle(title);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [positionYArrArtical, jumpArticle, jumpAt]);
+
+  useEffect(() => {
+    if (!jumpTitle) return;
+    const t = setTimeout(() => setJumpTitle(null), 2500);
+    return () => clearTimeout(t);
+  }, [jumpTitle]);
 
   // Lưu node gốc của từng điều theo tiêu đề để có thể ĐO LẠI vị trí bất cứ lúc
   // nào (onLayout chỉ tự chạy khi layout của điều so với cha nó đổi — mở/thu gọn
@@ -963,9 +1068,10 @@ export function Detail5() {
     outputRange: [0, (widthDevice / 100) * 60],
   });
 
+  // Bản tối: nền nội dung vốn đã tối nên phủ đậm hơn để panel nổi lên.
   let Opacity = animatedForNavi.interpolate({
     inputRange: [-100, 0],
-    outputRange: [0.7, 0],
+    outputRange: [isDark ? 0.88 : 0.7, 0],
   });
 
   let MagginBottom = animatedForNavi.interpolate({
@@ -1183,7 +1289,7 @@ export function Detail5() {
   // phần chữ của khoản (có tô sáng từ khóa tìm kiếm)
   function renderClauseText(text) {
     return (
-      <Text style={[styles.lines, { fontSize, lineHeight }]}>
+      <Text noScale style={[styles.lines, { fontSize, lineHeight }]}>
         {highlight([text], valueInput, false)}
       </Text>
     );
@@ -1206,7 +1312,10 @@ export function Detail5() {
       <View style={styles.appendixHeader}>
         <Text style={styles.appendixBadge}>{badge}</Text>
         {name ? (
-          <Text style={[styles.appendixName, { fontSize: fontSize + 2 }]}>
+          <Text
+            noScale
+            style={[styles.appendixName, { fontSize: fontSize + 2 }]}
+          >
             {name.toUpperCase()}
           </Text>
         ) : null}
@@ -1243,7 +1352,7 @@ export function Detail5() {
         // Chương / Mục… trong phụ lục: nhãn tĩnh, không thu gọn
         return (
           <View key={id}>
-            <Text style={[styles.appendixChapter, { fontSize }]}>
+            <Text noScale style={[styles.appendixChapter, { fontSize }]}>
               {String(title).toUpperCase()}
             </Text>
             {renderAppendixItems(value, i, short, `${path}${j}-`)}
@@ -1270,6 +1379,7 @@ export function Detail5() {
               onPress={() => pressDieu(id, copyTitle, clauses)}
             >
               <Text
+                noScale
                 style={[
                   styles.dieu,
                   { fontSize, lineHeight: dieuLineHeight },
@@ -1368,11 +1478,11 @@ export function Detail5() {
                     // selectable={true}
                     style={{
                       fontSize: 14,
-                      color: 'white',
+                      color: '#FFFFFF',
                       fontWeight: 'bold',
                       padding: 4,
                       textAlign: 'center',
-                      backgroundColor: '#66CCFF',
+                      backgroundColor: isDark ? '#1E4A66' : '#66CCFF',
                       marginBottom: 1,
                     }}
                   >
@@ -1457,7 +1567,7 @@ export function Detail5() {
             top: 0,
             bottom: 0,
             opacity: 0.7,
-            backgroundColor: 'black',
+            backgroundColor: colors.shadow,
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 10,
@@ -1466,28 +1576,27 @@ export function Detail5() {
         >
           <Text
             style={{
-              color: 'white',
+              // nền phủ luôn tối -> chữ trắng ở cả hai chế độ
+              color: '#FFFFFF',
               marginBottom: 15,
               fontWeight: 'bold',
             }}
           >
             Xin vui lòng đợi trong giây lát ...
           </Text>
-          <ActivityIndicator size="large" color="white"></ActivityIndicator>
+          <ActivityIndicator size="large" color="#FFFFFF"></ActivityIndicator>
         </View>
       )}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={
-          Platform.OS === 'ios' ? -insets.bottom - 15 : -insets.bottom - 35
-        }
+        // tắt: thanh tìm kiếm tự nâng theo bàn phím (keyboardLift)
+        enabled={false}
       >
         <View style={{ flex: 1, position: 'relative' }}>
           <View
             style={{
               top: 0,
-              backgroundColor: 'green',
+              backgroundColor: colors.primary,
               height: insets.top,
               position: 'absolute',
               width: widthDevice,
@@ -1500,7 +1609,7 @@ export function Detail5() {
               flexDirection: 'row',
               top: insets.top,
               width: widthDevice,
-              backgroundColor: 'green',
+              backgroundColor: colors.primary,
               position: 'relative',
               height: 50,
               justifyContent: 'space-between',
@@ -1631,7 +1740,7 @@ export function Detail5() {
                                 // key={`${i}bb`}
                                 style={{
                                   fontSize: 18,
-                                  color: 'black',
+                                  color: colors.text,
                                   fontWeight: 'bold',
                                   padding: 9,
                                   textAlign: 'center',
@@ -1880,6 +1989,9 @@ export function Detail5() {
               transform: [{ translateY: transY }],
             }}
           >
+            <Animated.View
+              style={{ transform: [{ translateY: keyboardLift }] }}
+            >
             <View
               // distance={10}
               // startColor={'gray'}
@@ -1891,8 +2003,7 @@ export function Detail5() {
               <View
                 style={{
                   flexDirection: 'row',
-                  minWidth: 98,
-                  width: '20%',
+                  width: 86,
                   justifyContent: 'space-around',
                   height: '100%',
                   alignItems: 'center',
@@ -1916,10 +2027,10 @@ export function Detail5() {
                   <Ionicons
                     name="caret-up-outline"
                     style={{
-                      paddingLeft: 15,
-                      paddingRight: 15,
+                      paddingLeft: 12,
+                      paddingRight: 12,
                       fontSize: 18,
-                      color: '#888888',
+                      color: colors.textMuted,
                       // textAlign: 'center',
                       // fontWeight: 'bold',
                       // fontSize: 25,
@@ -1942,10 +2053,10 @@ export function Detail5() {
                   <Ionicons
                     name="caret-down-outline"
                     style={{
-                      paddingLeft: 15,
-                      paddingRight: 15,
+                      paddingLeft: 12,
+                      paddingRight: 12,
                       fontSize: 18,
-                      color: '#888888',
+                      color: colors.textMuted,
                       // textAlign: 'center',
                       // fontWeight: 'bold',
                       // fontSize: 25,
@@ -1961,7 +2072,7 @@ export function Detail5() {
                     selectTextOnFocus={true}
                     style={{
                       width: '90%',
-                      color: 'black',
+                      color: colors.text,
                       height: 35,
                       fontSize: 13,
                       padding: 0,
@@ -1971,12 +2082,12 @@ export function Detail5() {
                     autoFocus={false}
                     value={input}
                     placeholder=" Vui lòng nhập từ khóa ..."
-                    placeholderTextColor={'gray'}
+                    placeholderTextColor={colors.placeholder}
                     onSubmitEditing={() => pushToSearch()}
                   ></TextInput>
                   <TouchableOpacity
                     style={{
-                      color: 'white',
+                      color: colors.onPrimary,
                       fontSize: 16,
                       flex: 1,
                       flexDirection: 'row',
@@ -1993,7 +2104,7 @@ export function Detail5() {
                       <Ionicons
                         name="close-circle-outline"
                         style={{
-                          color: 'black',
+                          color: colors.text,
                           fontSize: 20,
                           textAlign: 'center',
                           width: '100%',
@@ -2016,7 +2127,7 @@ export function Detail5() {
                 >
                   <Text
                     style={{
-                      color: 'black',
+                      color: colors.text,
                       fontSize: 8,
                       textAlign: 'center',
                       // minWidth:18
@@ -2028,10 +2139,10 @@ export function Detail5() {
                   </Text>
                   <Text
                     style={{
-                      color: 'black',
+                      color: colors.text,
                       fontSize: 8,
                       textAlign: 'center',
-                      borderTopColor: 'gray',
+                      borderTopColor: colors.textMuted,
                       borderTopWidth: 1,
                       // minWidth:18,
                     }}
@@ -2044,7 +2155,7 @@ export function Detail5() {
               </View>
               <View
                 style={{
-                  flex: 1,
+                  width: 52,
                   justifyContent: 'center',
                   flexDirection: 'row',
                 }}
@@ -2058,7 +2169,7 @@ export function Detail5() {
                   <Ionicons
                     name="return-down-forward-outline"
                     style={{
-                      color: 'white',
+                      color: colors.onPrimary,
                       fontWeight: 'bold',
                       fontSize: 18,
                     }}
@@ -2066,6 +2177,7 @@ export function Detail5() {
                 </TouchableOpacity>
               </View>
             </View>
+            </Animated.View>
           </Animated.View>
 
           {/* Panel chỉnh cỡ chữ: nền trong suốt để thấy chữ đổi ngay phía sau */}
@@ -2093,7 +2205,7 @@ export function Detail5() {
                   disabled={fontSize <= FONT_MIN}
                   onPress={() => changeFontSize(fontSize - 1)}
                 >
-                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: 'black' }}>A-</Text>
+                  <Text style={[styles.fontBtnText, { fontSize: 14 }]}>A-</Text>
                 </TouchableOpacity>
                 <Text style={styles.fontValue}>{fontSize}</Text>
                 <TouchableOpacity
@@ -2104,18 +2216,19 @@ export function Detail5() {
                   disabled={fontSize >= FONT_MAX}
                   onPress={() => changeFontSize(fontSize + 1)}
                 >
-                  <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'black' }}>A+</Text>
+                  <Text style={[styles.fontBtnText, { fontSize: 20 }]}>A+</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.fontBtn,
                     { width: 'auto', paddingHorizontal: 10 },
-                    fontSize === FONT_DEFAULT && styles.fontBtnDisabled,
+                    customFontSize == null && styles.fontBtnDisabled,
                   ]}
-                  disabled={fontSize === FONT_DEFAULT}
-                  onPress={() => changeFontSize(FONT_DEFAULT)}
+                  // đang theo cỡ chữ toàn app -> không có gì để đặt lại
+                  disabled={customFontSize == null}
+                  onPress={resetFontSize}
                 >
-                  <Text style={{ fontSize: 13, color: 'black' }}>Mặc định</Text>
+                  <Text style={{ fontSize: 13, color: colors.text }}>Mặc định</Text>
                 </TouchableOpacity>
               </Pressable>
             </Pressable>
@@ -2130,7 +2243,7 @@ export function Detail5() {
           >
             <ScrollView
               style={{
-                backgroundColor: '#EEEFE4',
+                backgroundColor: isDark ? colors.bg : '#EEEFE4',
                 paddingTop: Platform.OS === 'ios' ? 0 : insets.top,
               }}
             >
@@ -2138,12 +2251,12 @@ export function Detail5() {
                 <View
                   style={{
                     // marginTop:20,
-                    backgroundColor: 'white', // #CCCCCC
+                    backgroundColor: colors.surface, // #CCCCCC
                     flexDirection: 'row',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     height: 60,
-                    borderColor: '#2F4F4F',
+                    borderColor: isDark ? colors.border : '#2F4F4F',
                   }}
                 >
                   <TouchableOpacity
@@ -2156,7 +2269,7 @@ export function Detail5() {
                       height: 60,
                       width: 60,
                       // borderWidth:4,
-                      borderColor: 'black',
+                      borderColor: colors.borderStrong,
                       // borderRadius:10,
                       // backgroundColor:'white',
                     }}
@@ -2164,7 +2277,7 @@ export function Detail5() {
                     <Ionicons
                       name="close-outline"
                       style={{
-                        color: 'black',
+                        color: colors.text,
                         fontSize: 30,
                         textAlign: 'center',
                         // width: '100%',
@@ -2175,7 +2288,7 @@ export function Detail5() {
                   <View
                     style={{
                       flexDirection: 'row',
-                      backgroundColor: 'white',
+                      backgroundColor: colors.surface,
                       alignItems: 'center',
                       flex: 1,
                       justifyContent: 'flex-end',
@@ -2200,7 +2313,7 @@ export function Detail5() {
                         <Ionicons
                           name="save-outline"
                           style={{
-                            color: '#009933',
+                            color: isDark ? colors.primaryText : '#009933',
                             fontSize: 25,
                             textAlign: 'center',
                             width: '100%',
@@ -2245,7 +2358,7 @@ export function Detail5() {
                         <Ionicons
                           name="trash-outline"
                           style={{
-                            color: 'red',
+                            color: isDark ? colors.danger : 'red',
                             fontSize: 25,
                             textAlign: 'center',
                             fontWeight: 'bold',
@@ -2264,11 +2377,12 @@ export function Detail5() {
                   }}
                 >
                   <Text
+                    noScale
                     style={{
                       textAlign: 'center',
                       fontSize: Math.round((fontSize * 23) / FONT_DEFAULT),
                       fontWeight: 'bold',
-                      color: 'black',
+                      color: colors.text,
                     }}
                   >
                     THÔNG TIN CHI TIẾT
@@ -2290,22 +2404,23 @@ export function Detail5() {
                     style={{ ...styles.ModalInfoContainer, borderTopWidth: 2 }}
                   >
                     <View style={{ width: '40%', justifyContent: 'center' }}>
-                      <Text style={modalStyles.ModalInfoTitle}>Tên gọi:</Text>
+                      <Text noScale style={modalStyles.ModalInfoTitle}>Tên gọi:</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ ...modalStyles.ModalInfoContent }}>
+                      <Text noScale style={{ ...modalStyles.ModalInfoContent }}>
                         {Info && Info['lawNameDisplay']}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%', justifyContent: 'center' }}>
-                      <Text style={modalStyles.ModalInfoTitle}>
+                      <Text noScale style={modalStyles.ModalInfoTitle}>
                         Trích yếu nội dung:
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text
+                        noScale
                         style={{
                           ...modalStyles.ModalInfoContent,
                           textAlign: 'justify',
@@ -2317,10 +2432,10 @@ export function Detail5() {
                   </View>
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={modalStyles.ModalInfoTitle}>Ngày ký:</Text>
+                      <Text noScale style={modalStyles.ModalInfoTitle}>Ngày ký:</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={modalStyles.ModalInfoContent}>
+                      <Text noScale style={modalStyles.ModalInfoContent}>
                         {formatDateVN(Info?.lawDaySign)}
                       </Text>
                     </View>
@@ -2328,12 +2443,12 @@ export function Detail5() {
                   {Info['lawDayActive'] && (
                     <View style={styles.ModalInfoContainer}>
                       <View style={{ width: '40%' }}>
-                        <Text style={modalStyles.ModalInfoTitle}>
+                        <Text noScale style={modalStyles.ModalInfoTitle}>
                           Ngày có hiệu lực:
                         </Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={modalStyles.ModalInfoContent}>
+                        <Text noScale style={modalStyles.ModalInfoContent}>
                           {formatDateVN(Info?.lawDayActive)}
                         </Text>
                       </View>
@@ -2343,10 +2458,10 @@ export function Detail5() {
                   {Info['lawNumber'] && (
                     <View style={styles.ModalInfoContainer}>
                       <View style={{ width: '40%' }}>
-                        <Text style={modalStyles.ModalInfoTitle}>Số văn bản:</Text>
+                        <Text noScale style={modalStyles.ModalInfoTitle}>Số văn bản:</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={modalStyles.ModalInfoContent}>
+                        <Text noScale style={modalStyles.ModalInfoContent}>
                           {Info && !Info['lawNumber'].match(/^0001\\HP/gim)
                             ? Info['lawNumber']
                             : ''}
@@ -2357,13 +2472,13 @@ export function Detail5() {
 
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={modalStyles.ModalInfoTitle}>Tên người ký:</Text>
+                      <Text noScale style={modalStyles.ModalInfoTitle}>Tên người ký:</Text>
                     </View>
                     <View
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['nameSign']) ? (
-                        <Text style={modalStyles.ModalInfoContent}>
+                        <Text noScale style={modalStyles.ModalInfoContent}>
                           {Info['nameSign']}
                         </Text>
                       ) : (
@@ -2371,6 +2486,7 @@ export function Detail5() {
                         Info['nameSign'].map((key, i) => (
                           <View key={`${i}nameSign`}>
                             <Text
+                              noScale
                               style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
@@ -2383,7 +2499,7 @@ export function Detail5() {
 
                   <View style={styles.ModalInfoContainer}>
                     <View style={{ width: '40%' }}>
-                      <Text style={modalStyles.ModalInfoTitle}>
+                      <Text noScale style={modalStyles.ModalInfoTitle}>
                         Chức vụ người ký:
                       </Text>
                     </View>
@@ -2391,7 +2507,7 @@ export function Detail5() {
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['roleSign']) ? (
-                        <Text style={modalStyles.ModalInfoContent}>
+                        <Text noScale style={modalStyles.ModalInfoContent}>
                           {Info['roleSign']}
                         </Text>
                       ) : (
@@ -2399,6 +2515,7 @@ export function Detail5() {
                         Info['roleSign'].map((key, i) => (
                           <View key={`${i}roleSign`}>
                             <Text
+                              noScale
                               style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
@@ -2410,7 +2527,7 @@ export function Detail5() {
                   </View>
                   <View style={{ ...styles.ModalInfoContainer }}>
                     <View style={{ width: '40%' }}>
-                      <Text style={{ ...modalStyles.ModalInfoTitle }}>
+                      <Text noScale style={{ ...modalStyles.ModalInfoTitle }}>
                         Cơ quan ban hành:
                       </Text>
                     </View>
@@ -2418,7 +2535,7 @@ export function Detail5() {
                       style={{ flex: 1, paddingBottom: 10, paddingTop: 10 }}
                     >
                       {Info && !Array.isArray(Info['unitPublish']) ? (
-                        <Text style={modalStyles.ModalInfoContent}>
+                        <Text noScale style={modalStyles.ModalInfoContent}>
                           {Info['unitPublish']}
                         </Text>
                       ) : (
@@ -2426,6 +2543,7 @@ export function Detail5() {
                         Info['unitPublish'].map((key, i) => (
                           <View key={`${i}unitPublish`}>
                             <Text
+                              noScale
                               style={{ ...modalStyles.ModalInfoContentLawRelated }}
                             >
                               {`- ${key}`}
@@ -2446,6 +2564,7 @@ export function Detail5() {
                     >
                       <View style={{ width: '100%' }}>
                         <Text
+                          noScale
                           style={{
                             ...modalStyles.ModalInfoTitle,
                             textAlign: 'center',
@@ -2495,6 +2614,7 @@ export function Detail5() {
                                   }}
                                 >
                                   <Text
+                                    noScale
                                     style={{
                                       ...modalStyles.ModalInfoContentLawRelated,
                                       textAlign: 'justify',
@@ -2521,7 +2641,7 @@ export function Detail5() {
                     style={{
                       padding: 5,
                       marginTop: 30,
-                      backgroundColor: 'white', //#778899
+                      backgroundColor: colors.card, //#778899
                       // backgroundColor: '#00CC33',
                       alignItems: 'center',
                       width: 100,
@@ -2533,7 +2653,7 @@ export function Detail5() {
                       // borderColor:'#555555',
                       // borderWidth:1,
 
-                      shadowColor: 'gray',
+                      shadowColor: isDark ? colors.shadow : 'gray',
                       shadowOpacity: 1,
                       shadowOffset: {
                         width: 1,
@@ -2549,7 +2669,7 @@ export function Detail5() {
                         // paddingLeft: 10,
                         // paddingRight: 5,
                         fontSize: 15,
-                        color: 'black',
+                        color: colors.text,
                         fontWeight: 'bold',
                       }}
                     >
@@ -2566,7 +2686,8 @@ export function Detail5() {
   );
 }
 
-const styles = StyleSheet.create({
+// Màu theo theme; bản sáng giữ nguyên màu cũ (các giá trị isDark ? a : b).
+const makeStyles = (c, isDark) => ({
   titleText: {
     fontSize: 28,
     alignItems: 'center',
@@ -2576,21 +2697,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingLeft: 10,
     paddingRight: 10,
-    color: 'rgb(68,68,68)',
+    color: isDark ? c.textSecondary : 'rgb(68,68,68)',
     // backgroundColor:'rgb(230,230,230)',
     fontWeight: 'bold',
   },
   chapter: {
     // height: 60,
     justifyContent: 'center',
-    backgroundColor: '#F9CC76',
-    color: 'black',
+    backgroundColor: isDark ? '#4A3A12' : '#F9CC76',
+    color: c.text,
     alignItems: 'center',
     marginBottom: 1,
   },
   // phụ lục / văn bản kèm theo: tông xanh ngọc để khác hẳn Chương (vàng cam)
   appendixHeader: {
-    backgroundColor: '#26A69A',
+    backgroundColor: isDark ? '#1B6F67' : '#26A69A',
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -2600,8 +2721,8 @@ const styles = StyleSheet.create({
   appendixBadge: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#26A69A',
-    backgroundColor: 'white',
+    color: isDark ? '#1B6F67' : '#26A69A',
+    backgroundColor: '#FFFFFF',
     borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -2609,7 +2730,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   appendixName: {
-    color: 'white',
+    color: '#FFFFFF',
     fontWeight: 'bold',
     textAlign: 'center',
     marginTop: 4,
@@ -2623,13 +2744,13 @@ const styles = StyleSheet.create({
   },
   appendixBody: {
     borderLeftWidth: 3,
-    borderLeftColor: '#26A69A',
+    borderLeftColor: isDark ? '#1B6F67' : '#26A69A',
   },
   appendixChapter: {
     fontWeight: 'bold',
     textAlign: 'center',
-    color: '#00695C',
-    backgroundColor: '#E0F2F1',
+    color: isDark ? '#80CBC4' : '#00695C',
+    backgroundColor: isDark ? '#12302D' : '#E0F2F1',
     paddingVertical: 6,
     paddingHorizontal: 10,
     marginTop: 8,
@@ -2644,7 +2765,7 @@ const styles = StyleSheet.create({
     // backgroundColor:'blue',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'black',
+    color: c.text,
   },
   lines: {
     textAlign: 'justify',
@@ -2652,17 +2773,17 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     paddingBottom: 0,
     fontSize: 14,
-    color: 'black',
+    color: c.text,
     lineHeight: 23,
   },
   highlight: {
-    color: 'black',
-    backgroundColor: 'yellow',
+    color: c.highlightText,
+    backgroundColor: c.highlightBg,
     lineHeight: 23,
   },
   highlight1: {
-    color: 'black',
-    backgroundColor: 'orange',
+    color: c.highlightText,
+    backgroundColor: isDark ? '#B35A00' : 'orange',
     lineHeight: 23,
   },
   // Thu gọn: display:"none" ẩn HẲN khỏi layout. Trước dùng { height: 0 } nhưng RN
@@ -2670,8 +2791,11 @@ const styles = StyleSheet.create({
   content: {
     display: 'none',
   },
+  jumpBg: {
+    backgroundColor: isDark ? '#4A3F14' : '#FFE9A8',
+  },
   copiedBg: {
-    backgroundColor: '#d1daa8ff',
+    backgroundColor: isDark ? '#3A4220' : '#d1daa8ff',
   },
   functionTab: {
     position: 'absolute',
@@ -2681,11 +2805,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     bottom: 0,
-    backgroundColor: 'white', // #00CD66
+    backgroundColor: c.tabBar, // #00CD66
     paddingTop: 0,
     zIndex: 10,
     borderTopWidth: 2,
-    borderTopColor: 'black',
+    borderTopColor: c.tabBorder,
     alignItems: 'center',
   },
   tab: {
@@ -2699,13 +2823,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   innerTab: {
-    color: 'black',
+    color: c.text,
     textAlign: 'center',
     fontWeight: 'bold',
     fontSize: 18,
   },
   ActiveInner: {
-    color: '#00CD66',
+    color: isDark ? c.primaryText : '#00CD66',
     textAlign: 'center',
     fontWeight: 'bold',
     fontSize: 18,
@@ -2717,14 +2841,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     left: 0,
-    borderTopWidth: 0.4,
+    borderTopWidth: isDark ? 0 : 0.4,
     borderTopColor: 'gray',
   },
   searchView: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: 'black', //#FAEBD7
+    // bản tối: đảo trắng/đen so với bản sáng
+    backgroundColor: isDark ? '#FFFFFF' : '#000000', //#FAEBD7
     overflow: 'hidden',
     margin: 0,
     paddingTop: 1.5,
@@ -2740,9 +2865,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inputArea: {
-    width: '58%',
-    backgroundColor: '#F5F5F5',
-    color: 'white',
+    // chiếm hết phần còn lại giữa cụm mũi tên (86) và nút tìm (52)
+    flex: 1,
+    backgroundColor: isDark ? '#0A0A0A' : '#F5F5F5',
+    color: c.text,
     padding: 0,
     alignItems: 'center',
     // paddingLeft: 5,
@@ -2755,7 +2881,7 @@ const styles = StyleSheet.create({
   },
   searchBtb: {
     backgroundColor: '#008080',
-    color: 'white',
+    color: c.onPrimary,
     borderRadius: 30,
     width: 34,
     height: 34,
@@ -2766,17 +2892,26 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     marginRight: 20,
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: isDark ? c.border : '#FFFFFF',
   },
   listArticle: {
     position: 'absolute',
     width: '55%',
     top: 0,
     bottom: 0,
-    backgroundColor: 'white',
+    backgroundColor: isDark ? c.card : c.surface,
     display: 'flex',
     right: 0,
     zindex: 9,
+    ...(isDark && {
+      borderLeftWidth: 1,
+      borderLeftColor: c.borderStrong,
+      elevation: 12,
+      shadowColor: c.shadow,
+      shadowOpacity: 0.6,
+      shadowRadius: 12,
+      shadowOffset: { width: -4, height: 0 },
+    }),
   },
   listItem: {
     display: 'flex',
@@ -2784,10 +2919,10 @@ const styles = StyleSheet.create({
     paddingTop: 10,
 
     borderBottomWidth: 1,
-    borderBottomColor: 'rgb(245,245,247)',
+    borderBottomColor: isDark ? c.border : 'rgb(245,245,247)',
   },
   listItemText: {
-    color: 'black',
+    color: c.text,
     textAlign: 'justify',
     marginRight: 5,
     marginLeft: 5,
@@ -2799,6 +2934,7 @@ const styles = StyleSheet.create({
     paddingRight: '2%',
     flexWrap: 'wrap',
     borderWidth: 2,
+    borderColor: c.borderStrong,
     // paddingTop: 10,
     // borderBottomWidth: 1,
     borderTopWidth: 2,
@@ -2815,7 +2951,7 @@ const styles = StyleSheet.create({
     // flex: 1,
     fontWeight: 'bold',
     fontSize: 15,
-    color: 'black',
+    color: c.text,
     paddingRight: 5,
     top: 0,
     display: 'flex',
@@ -2826,7 +2962,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     paddingTop: 10,
     flex: 1,
-    color: 'black',
+    color: c.text,
     fontSize: 14,
     paddingLeft: '4%',
     // backgroundColor:'yellow',
@@ -2836,25 +2972,25 @@ const styles = StyleSheet.create({
     paddingBottom: 5,
     paddingTop: 5,
     flex: 1,
-    color: 'black',
+    color: c.text,
     fontSize: 14,
     paddingLeft: '4%',
   },
   IconInfo: {
     fontSize: 30,
     display: 'flex',
-    color: 'white',
+    color: c.onPrimary,
   },
   fontPanel: {
     position: 'absolute',
     right: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
+    backgroundColor: c.card,
     borderRadius: 12,
     padding: 8,
     elevation: 6,
-    shadowColor: '#000',
+    shadowColor: c.shadow,
     shadowOpacity: 0.25,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -2863,7 +2999,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 40,
     borderRadius: 8,
-    backgroundColor: '#EEEEEE',
+    backgroundColor: isDark ? c.cardAlt : '#EEEEEE',
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 4,
@@ -2871,11 +3007,15 @@ const styles = StyleSheet.create({
   fontBtnDisabled: {
     opacity: 0.35,
   },
+  fontBtnText: {
+    fontWeight: 'bold',
+    color: c.text,
+  },
   fontValue: {
     minWidth: 32,
     textAlign: 'center',
     fontSize: 16,
     fontWeight: 'bold',
-    color: 'black',
+    color: c.text,
   },
 });

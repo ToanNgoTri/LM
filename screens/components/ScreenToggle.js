@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Text, useThemedStyles } from '../../theme';
 
 const BTN_WIDTH = 100;
 
 export function ScreenToggle({ active }) {
   const navigation = useNavigation();
+  const styles = useThemedStyles(makeStyles);
 
   function goTo(screen, side) {
     // console.log('current active', active);
@@ -50,7 +52,8 @@ export function ScreenToggle({ active }) {
   );
 }
 
-const styles = StyleSheet.create({
+// Nút nằm trên header xanh (brand) nên nền mờ trắng giữ nguyên ở cả hai theme.
+const makeStyles = (c, isDark) => ({
   wrapper: {
     flexDirection: 'row',
     alignSelf: 'center',
@@ -68,7 +71,7 @@ const styles = StyleSheet.create({
     top: 3,
     width: BTN_WIDTH,
     height: '100%',
-    backgroundColor: 'white',
+    backgroundColor: isDark ? c.cardAlt : '#FFFFFF',
     borderRadius: 16,
   },
 
@@ -88,6 +91,6 @@ const styles = StyleSheet.create({
   },
 
   labelActive: {
-    color: '#333',
+    color: isDark ? c.text : '#333',
   },
 });

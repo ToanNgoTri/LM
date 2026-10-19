@@ -1,0 +1,4 @@
+<resources>
+    <!-- Nền cửa sổ trước khi JS vẽ xong (khớp colors.bg trong theme/colors.js) -->
+    <color name="app_background">#FFFFFF</color>
+</resources>

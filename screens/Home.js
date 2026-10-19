@@ -1,12 +1,10 @@
 import {
-  Text,
-  StyleSheet,
   TouchableOpacity,
   View,
-  TextInput,
   Keyboard,
   TouchableWithoutFeedback,
   FlatList,
+  DeviceEventEmitter,
 } from 'react-native';
 import {
   useState,
@@ -23,11 +21,13 @@ import {
 } from '../App';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { ORDER_FILE, readUserJson, writeUserJson } from '../storage/userFiles';
+import { DOWNLOADED_CHANGED } from '../utils/defaultLaws';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SortableItem } from 'react-native-reanimated-dnd';
 import { SortableLawList } from './components/SortableLawList';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
+import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 
 // Sortable chạy ở chế độ chiều cao ĐỘNG (enableDynamicHeights): mỗi card tự
 // đo chiều cao thật qua onLayout nên text hiện đầy đủ, không bị cắt.
@@ -50,6 +50,8 @@ const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
   const isHienPhap = law && law['lawNameDisplay'].match(/^(Hiến)/gim);
   const isHeader =
     law && law['lawNameDisplay'].match(/^(luật|bộ luật|hiến)/gim);
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   return (
     <TouchableOpacity
@@ -58,7 +60,7 @@ const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
         minHeight: ITEM_HEIGHT,
         justifyContent: 'center',
         paddingVertical: 12,
-        backgroundColor: isHienPhap ? '#da251dff' : 'green',
+        backgroundColor: isHienPhap ? '#da251dff' : colors.primary,
       }}
     >
       <View style={styles.item}>
@@ -92,6 +94,8 @@ export default function Home({}) {
 
   const insets = useSafeAreaInsets(); // lất chiều cao để menu top iphone
   const tabBarHeight = useTabBarHeight();
+  const { colors, fontScale } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   const textInput = useRef(null);
 
@@ -133,6 +137,12 @@ export default function Home({}) {
     setCardHeights(cardHeightsRef.current);
   }, []);
 
+  // Đổi cỡ chữ toàn app -> card cao/thấp khác -> đo lại từ đầu.
+  useEffect(() => {
+    cardHeightsRef.current = {};
+    setCardHeights({});
+  }, [fontScale]);
+
   // Đã đo đủ mọi item hiện có chưa?
   const allMeasured = useMemo(
     () =>
@@ -172,8 +182,8 @@ export default function Home({}) {
   // key = dataHash của <Sortable> gốc): ghép chuỗi id theo đúng thứ tự. Kéo-thả
   // KHÔNG gọi setData nên không remount -> cuộn tay không bị ảnh hưởng.
   const sortableKey = useMemo(
-    () => sortableData.map(it => it.id).join('|'),
-    [sortableData],
+    () => sortableData.map(it => it.id).join('|') + '#' + fontScale,
+    [sortableData, fontScale],
   );
 
   // Expose global.HomeRef để nhấn lần 2 vào bottom tab "Đã tải xuống" cuộn lên đầu.
@@ -261,9 +271,7 @@ export default function Home({}) {
   }
 
   useEffect(() => {
-    const listener = navigation.addListener('focus', () => {
-      setInputSearchLaw('');
-
+    const reload = () =>
       getContentExist().then(cont => {
         if (!Object.keys(cont.order).length) {
           setShowBackground(true);
@@ -280,9 +288,18 @@ export default function Home({}) {
           setData([]);
         }
       });
-    });
 
-    return listener;
+    const listener = navigation.addListener('focus', () => {
+      setInputSearchLaw('');
+      reload();
+    });
+    // Văn bản tải sẵn (utils/defaultLaws) tải xong khi Home đang mở.
+    const sub = DeviceEventEmitter.addListener(DOWNLOADED_CHANGED, reload);
+
+    return () => {
+      listener();
+      sub.remove();
+    };
   }, []);
 
   async function sortedData(data) {
@@ -346,10 +363,10 @@ export default function Home({}) {
             alignItems: 'center',
             justifyContent: 'center',
             width: '100%',
-            backgroundColor: '#EEEFE4',
+            backgroundColor: colors.bgAlt,
           }}
         >
-          <Text style={{ fontSize: 40, textAlign: 'center', color: 'gray' }}>
+          <Text style={{ fontSize: 40, textAlign: 'center', color: colors.textMuted }}>
             {' '}
             {Info.length ? '' : 'Chưa có văn bản tải xuống'}
           </Text>
@@ -372,13 +389,16 @@ export default function Home({}) {
       >
         <View
           style={{
-            backgroundColor: 'green',
+            backgroundColor: colors.primary,
             height: insets.top,
             width: '150%',
           }}
         ></View>
         <View style={{ flexDirection: 'row' }}>
-          <View
+          {/* Mở màn Cài đặt: giao diện, cỡ chữ, gói đăng ký, chính sách, phiên bản */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Settings')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{
               display: 'flex',
               justifyContent: 'center',
@@ -386,13 +406,13 @@ export default function Home({}) {
             }}
           >
             <Ionicons
-              name="logo-buffer"
+              name="settings-outline"
               style={{
-                color: 'green',
+                color: colors.primaryText,
                 fontSize: 25,
               }}
             ></Ionicons>
-          </View>
+          </TouchableOpacity>
           <TextInput
             onChangeText={text => {
               setInputSearchLaw(text);
@@ -402,7 +422,7 @@ export default function Home({}) {
             value={inputSearchLaw}
             style={inputSearchLaw ? styles.inputSearchArea : styles.placeholder}
             placeholder="Nhập tên, Số văn bản, Trích yếu . . ."
-            placeholderTextColor={'gray'}
+            placeholderTextColor={colors.placeholder}
             onTouchEnd={() => {
               if (textInputFocus) {
                 textInput.current.blur();
@@ -431,7 +451,7 @@ export default function Home({}) {
               <Ionicons
                 name="close-circle-outline"
                 style={{
-                  color: 'black',
+                  color: colors.text,
                   fontSize: 25,
                   justifyContent: 'center',
                   textAlign: 'right',
@@ -521,7 +541,7 @@ export default function Home({}) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = c => ({
   item: {
     display: 'flex',
     justifyContent: 'center',
@@ -532,7 +552,7 @@ const styles = StyleSheet.create({
   },
   itemDisplay: {
     fontWeight: 'bold',
-    color: 'white',
+    color: c.onPrimary,
     textAlign: 'center',
     fontSize: 17,
     marginBottom: 2,
@@ -546,7 +566,7 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     fontSize: 18,
-    color: 'black',
+    color: c.text,
     width: '85%',
     alignItems: 'center',
     height: 50,
@@ -555,7 +575,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingLeft: 10,
     paddingRight: 10,
-    color: 'black',
+    color: c.text,
     width: '85%',
     alignItems: 'center',
     height: 50,

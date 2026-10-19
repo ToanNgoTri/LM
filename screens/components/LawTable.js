@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import {
   Pressable,
   StyleSheet,
-  Text,
   View,
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { buildTableGrid } from '../../utils/lawTables';
+import { Text, useThemedStyles } from '../../theme';
 
 const MIN_COL = 44; // px tối thiểu mỗi cột
 const MIN_COL_FOR_BASE = 80; // bảng nhiều cột thì cho rộng hơn màn hình + cuộn ngang
@@ -23,6 +23,7 @@ const PAGE_ROWS = 100; // bảng dài (vd danh mục ~1000 hàng): vẽ dần t�
 export function LawTable({ table, lines, renderText, fontSize = 14, showAll = false }) {
   const { width } = useWindowDimensions();
   const [limit, setLimit] = useState(PAGE_ROWS);
+  const styles = useThemedStyles(makeStyles);
 
   if (!table || !Array.isArray(table.rows) || !table.rows.length) {
     return (
@@ -163,64 +164,66 @@ export function LawTable({ table, lines, renderText, fontSize = 14, showAll = fa
   );
 }
 
-const BORDER = '#999';
-
-const styles = StyleSheet.create({
-  wrap: {
-    marginVertical: 6,
-    marginHorizontal: SIDE_PADDING,
-  },
-  scrollContent: {
-    paddingRight: 2,
-  },
-  table: {
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderColor: BORDER,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  cell: {
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 4,
-    paddingVertical: 3,
-  },
-  noBottom: {
-    borderBottomWidth: 0,
-  },
-  cellText: {
-    color: 'black',
-  },
-  bold: {
-    fontWeight: 'bold',
-  },
-  center: {
-    textAlign: 'center',
-  },
-  right: {
-    textAlign: 'right',
-  },
-  moreRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  moreBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginHorizontal: 4,
-    borderRadius: 6,
-    backgroundColor: '#EEEEEE',
-  },
-  moreText: {
-    fontSize: 13,
-    color: '#333',
-  },
-  fallbackLine: {
-    color: 'black',
-    paddingHorizontal: SIDE_PADDING,
-  },
-});
+// Màu kẻ bảng: bản sáng giữ #999 như cũ
+const makeStyles = (c, isDark) => {
+  const BORDER = isDark ? c.borderStrong : '#999';
+  return {
+    wrap: {
+      marginVertical: 6,
+      marginHorizontal: SIDE_PADDING,
+    },
+    scrollContent: {
+      paddingRight: 2,
+    },
+    table: {
+      borderTopWidth: 1,
+      borderLeftWidth: 1,
+      borderColor: BORDER,
+    },
+    row: {
+      flexDirection: 'row',
+    },
+    cell: {
+      borderRightWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: BORDER,
+      paddingHorizontal: 4,
+      paddingVertical: 3,
+    },
+    noBottom: {
+      borderBottomWidth: 0,
+    },
+    cellText: {
+      color: c.text,
+    },
+    bold: {
+      fontWeight: 'bold',
+    },
+    center: {
+      textAlign: 'center',
+    },
+    right: {
+      textAlign: 'right',
+    },
+    moreRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginBottom: 6,
+    },
+    moreBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      marginHorizontal: 4,
+      borderRadius: 6,
+      backgroundColor: isDark ? c.cardAlt : '#EEEEEE',
+    },
+    moreText: {
+      fontSize: 13,
+      color: c.textSecondary,
+    },
+    fallbackLine: {
+      color: c.text,
+      paddingHorizontal: SIDE_PADDING,
+    },
+  };
+};

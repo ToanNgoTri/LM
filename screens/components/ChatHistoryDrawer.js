@@ -11,13 +11,12 @@ import {
   StatusBar,
   StyleSheet,
   useWindowDimensions,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, TextInput, useTheme, useThemedStyles } from '../../theme';
 
 const DRAWER_WIDTH = Math.min(
   300,
@@ -62,6 +61,8 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   onNewChat,
 }) {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const { colors, isDark } = useTheme();
   const { width: winW, height: winH } = useWindowDimensions();
   // + thanh trạng thái / điều hướng: Modal trong suốt vẽ tràn cả hai.
   const screenSize = { width: winW, height: winH + 200 };
@@ -201,13 +202,17 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
         {/* Đầu drawer: tên trợ lý + gói đăng ký */}
         <View style={styles.header}>
           <View style={styles.brandIcon}>
-            <Ionicons name="sparkles" size={15} color="#fff" />
+            <Ionicons name="sparkles" size={15} color={colors.onAccent} />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.brandName}>Trợ lý Luật AI</Text>
             {isPremium ? (
               <View style={styles.planLine}>
-                <Ionicons name="diamond" size={11} color="#FFD479" />
+                <Ionicons
+                  name="diamond"
+                  size={11}
+                  color={isDark ? '#FFD479' : '#B7791F'}
+                />
                 <Text style={styles.planPremium} numberOfLines={1}>
                   Premium{planLabel ? ` · ${planLabel}` : ''}
                 </Text>
@@ -226,7 +231,11 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
         {isPremium ? (
           expiryDate ? (
             <View style={styles.expiryRow}>
-              <Ionicons name="calendar-outline" size={14} color="#A0A0C0" />
+              <Ionicons
+                name="calendar-outline"
+                size={14}
+                color={isDark ? '#A0A0C0' : colors.textMuted}
+              />
               <Text style={styles.expiryText}>
                 Kết thúc chu kỳ:{' '}
                 <Text style={styles.expiryDate}>
@@ -241,7 +250,7 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
             activeOpacity={0.85}
             onPress={onUpgrade}
           >
-            <Ionicons name="sparkles" size={14} color="#fff" />
+            <Ionicons name="sparkles" size={14} color={colors.onAccent} />
             <Text style={styles.upgradeText}>Nâng cấp Premium</Text>
           </TouchableOpacity>
         )}
@@ -251,20 +260,24 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
           activeOpacity={0.75}
           onPress={onNewChat}
         >
-          <Ionicons name="create-outline" size={18} color="#C8C4FF" />
+          <Ionicons
+            name="create-outline"
+            size={18}
+            color={isDark ? '#C8C4FF' : colors.accent}
+          />
           <Text style={styles.newChatText}>Cuộc trò chuyện mới</Text>
         </TouchableOpacity>
 
         <View style={styles.divider} />
         {history.length ? (
           <View style={styles.searchBox}>
-            <Ionicons name="search" size={15} color="#6A6A88" />
+            <Ionicons name="search" size={15} color={colors.placeholder} />
             <TextInput
               style={styles.searchInput}
               value={query}
               onChangeText={setQuery}
               placeholder="Tìm trong lịch sử"
-              placeholderTextColor="#5E5E7C"
+              placeholderTextColor={isDark ? '#5E5E7C' : colors.placeholder}
               returnKeyType="search"
               autoCorrect={false}
             />
@@ -273,7 +286,7 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
                 onPress={() => setQuery('')}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="close-circle" size={16} color="#6A6A88" />
+                <Ionicons name="close-circle" size={16} color={colors.placeholder} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -299,18 +312,25 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   );
 });
 
-const styles = StyleSheet.create({
-  // Nền trắng đục (không dùng đen) để drawer tối nổi bật hơn.
-  backdrop: { position: 'absolute', top: 0, left: 0, backgroundColor: '#fff' },
+// Bản tối giữ màu drawer cũ; bản sáng: panel trắng, viền/ô xám nhạt, điểm nhấn tím.
+const makeStyles = (c, isDark) => ({
+  // Bản tối: nền trắng đục (không dùng đen) để drawer tối nổi bật hơn. Bản
+  // sáng: drawer trắng thì nền mờ phải tối mới tách được.
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    backgroundColor: isDark ? '#FFFFFF' : c.shadow,
+  },
   touchLayer: { position: 'absolute', top: 0, left: 0 },
   panel: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: '#12121C',
+    backgroundColor: isDark ? '#12121C' : c.surface,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: '#2A2A44',
+    borderRightColor: isDark ? '#2A2A44' : c.border,
     paddingHorizontal: 14,
   },
   header: {
@@ -324,15 +344,19 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#6C63FF',
+    backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerText: { flex: 1, gap: 2 },
-  brandName: { color: '#F0F0FA', fontSize: 16, fontWeight: '700' },
+  brandName: { color: c.text, fontSize: 16, fontWeight: '700' },
   planLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  planPremium: { color: '#FFD479', fontSize: 12.5, fontWeight: '600' },
-  planFree: { color: '#8A8AA8', fontSize: 12.5 },
+  planPremium: {
+    color: isDark ? '#FFD479' : '#B7791F',
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  planFree: { color: c.textMuted, fontSize: 12.5 },
   expiryRow: {
     marginTop: 10,
     flexDirection: 'row',
@@ -341,21 +365,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: isDark ? c.card : c.bgAlt,
   },
-  expiryText: { color: '#A0A0C0', fontSize: 13 },
-  expiryDate: { color: '#F0F0FA', fontWeight: '700' },
+  expiryText: { color: isDark ? '#A0A0C0' : c.textMuted, fontSize: 13 },
+  expiryDate: { color: c.text, fontWeight: '700' },
   upgradeBtn: {
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    backgroundColor: '#6C63FF',
+    backgroundColor: c.accent,
     borderRadius: 12,
     paddingVertical: 10,
   },
-  upgradeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  upgradeText: { color: c.onAccent, fontSize: 14, fontWeight: '700' },
   newChatBtn: {
     marginTop: 10,
     flexDirection: 'row',
@@ -366,12 +390,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2E2E4A',
+    borderColor: isDark ? '#2E2E4A' : c.border,
   },
-  newChatText: { color: '#E0E0F4', fontSize: 14.5, fontWeight: '600' },
+  newChatText: {
+    color: isDark ? '#E0E0F4' : c.text,
+    fontSize: 14.5,
+    fontWeight: '600',
+  },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#2A2A44',
+    backgroundColor: isDark ? '#2A2A44' : c.border,
     marginTop: 16,
   },
   searchBox: {
@@ -382,11 +410,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: isDark ? c.card : c.bgAlt,
   },
   searchInput: {
     flex: 1,
-    color: '#E0E0F4',
+    color: isDark ? '#E0E0F4' : c.text,
     fontSize: 14,
     paddingVertical: 0,
   },
@@ -394,7 +422,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     marginBottom: 4,
     marginLeft: 4,
-    color: '#6A6A88',
+    color: isDark ? '#6A6A88' : c.textMuted,
     fontSize: 11.5,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -407,8 +435,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 2,
   },
-  histItemActive: { backgroundColor: '#22223A' },
-  histTitle: { color: '#E0E0F4', fontSize: 14.5 },
-  histWhen: { color: '#5E5E7C', fontSize: 11.5 },
-  emptyText: { color: '#6A6A88', fontSize: 13.5, marginLeft: 4, marginTop: 6 },
+  histItemActive: { backgroundColor: isDark ? '#22223A' : c.accentSoft },
+  histTitle: { color: isDark ? '#E0E0F4' : c.text, fontSize: 14.5 },
+  histWhen: { color: isDark ? '#5E5E7C' : c.textMuted, fontSize: 11.5 },
+  emptyText: {
+    color: isDark ? '#6A6A88' : c.textMuted,
+    fontSize: 13.5,
+    marginLeft: 4,
+    marginTop: 6,
+  },
 });

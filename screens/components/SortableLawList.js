@@ -1,9 +1,9 @@
 import React, { forwardRef, memo, useImperativeHandle } from 'react';
-import { StyleSheet } from 'react-native';
 import Animated, { scrollTo, runOnUI } from 'react-native-reanimated';
 import { ScrollView } from 'react-native-gesture-handler';
 import { DropProvider, SortableDirection } from 'react-native-reanimated-dnd';
 import { useSortableListSmooth } from './useSortableListSmooth';
+import { useThemedStyles } from '../../theme';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
@@ -35,6 +35,7 @@ export const SortableLawList = memo(
     },
     ref,
   ) {
+    const styles = useThemedStyles(makeStyles);
     const {
       scrollViewRef,
       dropProviderRef,
@@ -92,6 +93,6 @@ export const SortableLawList = memo(
   }),
 );
 
-const styles = StyleSheet.create({
-  scrollView: { flex: 1, position: 'relative', backgroundColor: 'white' },
+const makeStyles = c => ({
+  scrollView: { flex: 1, position: 'relative', backgroundColor: c.bg },
 });

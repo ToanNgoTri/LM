@@ -29,6 +29,7 @@ export const LASTED_LAW_FILE = DOC + '/lastedLaw.txt';
 export const APPEAR_FILE = DOC + '/Appear.txt';
 export const SETTINGS_FILE = DOC + '/settings.txt'; // tuỳ chỉnh đọc (cỡ chữ...)
 export const AI_HISTORY_FILE = DOC + '/aiHistory.txt'; // lịch sử Chat AI (20 cuộc gần nhất)
+export const DEFAULT_LAWS_FILE = DOC + '/defaultLaws.txt'; // trạng thái tự tải văn bản mặc định (utils/defaultLaws)
 
 // Chạy đúng một lần cho cả vòng đời app; mọi hàm đọc/ghi bên dưới đều await
 // promise này nên không có chuyện màn hình đọc trước khi chuyển xong.
@@ -89,4 +90,31 @@ export async function userFileExists(path) {
   } catch (e) {
     return false;
   }
+}
+
+// ── Cài đặt người dùng (SETTINGS_FILE) ─────────────────────────────────────
+// Nhiều nơi cùng ghi file này (theme, cỡ chữ app, cỡ chữ Detail5) nên mọi lần
+// ghi đi qua một hàng đợi đọc-gộp-ghi để không đè mất key của nhau.
+//   themeMode: 'system' | 'light' | 'dark'
+//   fontScale: hệ số cỡ chữ toàn app (theme/ThemeContext FONT_SCALES)
+//   fontSize:  cỡ chữ nội dung văn bản ở Detail5 (thiếu = theo fontScale)
+let settingsQueue = Promise.resolve();
+
+export async function readUserSettings() {
+  await settingsQueue;
+  const s = await readUserJson(SETTINGS_FILE, {});
+  return s && typeof s === 'object' ? s : {};
+}
+
+/** Gộp patch vào settings; key có giá trị undefined sẽ bị xoá. */
+export function updateUserSettings(patch) {
+  settingsQueue = settingsQueue.then(async () => {
+    const cur = (await readUserJson(SETTINGS_FILE, {})) || {};
+    const next = { ...cur, ...patch };
+    Object.keys(patch).forEach(k => {
+      if (patch[k] === undefined) delete next[k];
+    });
+    await writeUserJson(SETTINGS_FILE, next);
+  });
+  return settingsQueue;
 }

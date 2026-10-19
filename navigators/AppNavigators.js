@@ -1,18 +1,23 @@
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+} from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { useEffect, useContext, useRef, useState, useInsertionEffect } from 'react';
+import { useEffect, useContext, useRef, useState, useInsertionEffect, useMemo } from 'react';
 import Home from '../screens/Home';
 import { Detail1 } from '../screens/Detail1';
 import { Detail2 } from '../screens/Detail2';
 import { AIChatScreen } from '../screens/chatAI';
 import { Detail5 } from '../screens/Detail5';
+import { Settings } from '../screens/Settings';
+import { useTheme, useThemedStyles } from '../theme';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { RefOfHome } from '../App';
 import {
   View,
-  StyleSheet,
   TouchableOpacity,
   Animated,
   Dimensions,
@@ -50,23 +55,17 @@ const TAB_ITEMS = [
 ];
 
 // ─────────────────────────────────────────────────────────────
-// Palette của thanh tab
-// Nền trắng + ribbon xanh indigo cho icon active, icon inactive xám.
+// Palette của thanh tab: lấy từ theme (colors.tabBar, tabRibbon, tabIcon*...)
+// Bản sáng: nền trắng + ribbon xanh lá nhạt cho icon active, icon inactive xám.
 // ─────────────────────────────────────────────────────────────
-const TAB_COLORS = {
-  bar:           '#FFFFFF',
-  border:        '#000000',
-  ribbon:        '#a9ebb8',
-  iconActive:    '#070303',
-  iconInactive:  '#8A93A8',
-  labelInactive: '#5B6478',
-};
 
 // ─────────────────────────────────────────────────────────────
 // TabItem
 // ─────────────────────────────────────────────────────────────
 function TabItem({ tabIndex, currentIdx, label, iconActive, iconInactive, onPress, tabWidth, tabHeight, anim }) {
   const isActive = currentIdx === tabIndex;
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const ribbonScaleX = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
   const iconScale    = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15], extrapolate: 'clamp' });
   const labelOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 0], extrapolate: 'clamp' });
@@ -89,7 +88,7 @@ function TabItem({ tabIndex, currentIdx, label, iconActive, iconInactive, onPres
         <Animated.View
           style={{
             width: 66, height: 27, borderRadius: 10,
-            backgroundColor: TAB_COLORS.ribbon,
+            backgroundColor: colors.tabRibbon,
             position: 'absolute', alignSelf: 'center',
             transform: [{ scaleX: ribbonScaleX }],
           }}
@@ -103,7 +102,7 @@ function TabItem({ tabIndex, currentIdx, label, iconActive, iconInactive, onPres
       {/* Label fade + scale tại chỗ */}
       <Animated.Text
         style={{
-          color: TAB_COLORS.labelInactive, fontSize: 10, fontWeight: 'bold', marginTop: 1,
+          color: colors.tabLabel, fontSize: 10, fontWeight: 'bold', marginTop: 1,
           opacity: labelOpacity,
           transform: [{ scale: labelScale }],
         }}
@@ -127,6 +126,7 @@ function CustomTabBar({ navigation, state, anims, animateTo, tabHeight, tabWidth
   }, [idx]);
 
   const bottomInset = useBottomBarInset();
+  const { colors } = useTheme();
 
   return (
     <View
@@ -146,9 +146,9 @@ function CustomTabBar({ navigation, state, anims, animateTo, tabHeight, tabWidth
         borderTopRightRadius: 15,
         borderTopLeftRadius: 15,
         borderWidth: TAB_BAR_BORDER_WIDTH,
-        borderColor: TAB_COLORS.border,
-        backgroundColor: TAB_COLORS.bar,
-        shadowColor: '#000',
+        borderColor: colors.tabBorder,
+        backgroundColor: colors.tabBar,
+        shadowColor: colors.shadow,
         shadowOpacity: 0.08,
         shadowRadius: 81,
         shadowOffset: { width: 0, height: -2 },
@@ -266,12 +266,30 @@ const Stack = createNativeStackNavigator();
 const StackNavigator = () => {
   const netInfo  = useNetInfo();
   const dispatch = useDispatch();
+  const { colors, isDark } = useTheme();
+
+  // Theme của react-navigation: nền màn hình/thẻ theo theme app để lúc
+  // chuyển màn không loé nền trắng ở chế độ tối.
+  const navTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.primaryText,
+        background: colors.bg,
+        card: colors.surface,
+        text: colors.text,
+        border: colors.border,
+      },
+    };
+  }, [colors, isDark]);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navTheme}>
       <Stack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: 'green' },
+          headerStyle: { backgroundColor: colors.primary },
           headerBlurEffect: 'extraLight',
           headerShadowVisible: false,
         }}
@@ -296,6 +314,11 @@ const StackNavigator = () => {
           component={Detail1}
           options={{ header: () => null, animation: 'simple_push' }}
         />
+        <Stack.Screen
+          name="Settings"
+          component={Settings}
+          options={{ header: () => null, animation: 'slide_from_left' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -304,10 +327,10 @@ const StackNavigator = () => {
 // ─────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  IconActive:   { fontSize: 22, color: TAB_COLORS.iconActive, padding: 0, margin: 0, lineHeight: 25 },
-  IconInActive: { fontSize: 22, color: TAB_COLORS.iconInactive, padding: 0, lineHeight: 25 },
-  IconInfo:     { fontSize: 30, color: 'white' },
+const makeStyles = c => ({
+  IconActive:   { fontSize: 22, color: c.tabIconActive, padding: 0, margin: 0, lineHeight: 25 },
+  IconInActive: { fontSize: 22, color: c.tabIconInactive, padding: 0, lineHeight: 25 },
+  IconInfo:     { fontSize: 30, color: c.onPrimary },
   iconInfoContainer: { height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 25 },
 });
 

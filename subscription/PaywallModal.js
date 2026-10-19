@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -12,6 +11,7 @@ import {
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from './SubscriptionContext';
+import { Text, useTheme, useThemedStyles } from '../theme';
 
 const BENEFITS = [
   'Dùng model AI trả phí, trả lời chính xác & sâu hơn',
@@ -28,6 +28,8 @@ const openLink = url => Linking.openURL(url).catch(() => {});
 
 export const PaywallModal = ({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
+  const styles = useThemedStyles(makeStyles);
+  const { colors } = useTheme();
   const { plans, buy, restore, purchasing, isPremium } = useSubscription();
   const [selected, setSelected] = useState('yearly');
 
@@ -63,12 +65,12 @@ export const PaywallModal = ({ visible, onClose }) => {
           <View style={styles.handle} />
 
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Ionicons name="close" size={22} color="#8A8AA8" />
+            <Ionicons name="close" size={22} color={colors.textMuted} />
           </TouchableOpacity>
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.headerIcon}>
-              <Ionicons name="sparkles" size={26} color="#fff" />
+              <Ionicons name="sparkles" size={26} color={colors.onAccent} />
             </View>
             <Text style={styles.title}>Nâng cấp Premium</Text>
             <Text style={styles.subtitle}>
@@ -81,7 +83,7 @@ export const PaywallModal = ({ visible, onClose }) => {
                   <Ionicons
                     name="checkmark-circle"
                     size={18}
-                    color="#22D3A0"
+                    color={colors.success}
                   />
                   <Text style={styles.benefitText}>{b}</Text>
                 </View>
@@ -124,7 +126,7 @@ export const PaywallModal = ({ visible, onClose }) => {
               activeOpacity={0.85}
             >
               {purchasing ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onAccent} />
               ) : (
                 <Text style={styles.buyBtnText}>
                   {isPremium ? 'Đang là Premium' : 'Tiếp tục thanh toán'}
@@ -158,14 +160,16 @@ export const PaywallModal = ({ visible, onClose }) => {
   );
 };
 
-const styles = StyleSheet.create({
+// Bản tối giữ sheet tím-đen cũ; bản sáng: sheet trắng, card xám nhạt, chọn
+// gói thì viền tím + nền tím nhạt.
+const makeStyles = (c, isDark) => ({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.45)',
   },
   sheet: {
-    backgroundColor: '#13131F',
+    backgroundColor: c.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
@@ -176,7 +180,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#2E2E48',
+    backgroundColor: isDark ? c.border : '#D8D8E0',
     alignSelf: 'center',
     marginBottom: 8,
   },
@@ -191,26 +195,26 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#6C63FF',
+    backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
     marginTop: 8,
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.5,
+    shadowColor: c.accent,
+    shadowOpacity: isDark ? 0.5 : 0.3,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    elevation: isDark ? 8 : 4,
   },
   title: {
-    color: '#F0F0FA',
+    color: c.text,
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
     marginTop: 14,
   },
   subtitle: {
-    color: '#9A9AB8',
+    color: isDark ? '#9A9AB8' : c.textMuted,
     fontSize: 13.5,
     textAlign: 'center',
     marginTop: 6,
@@ -220,35 +224,39 @@ const styles = StyleSheet.create({
   },
   benefits: { marginBottom: 18, gap: 10 },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  benefitText: { color: '#D0D0E8', fontSize: 14, flex: 1, lineHeight: 19 },
+  benefitText: { color: c.textSecondary, fontSize: 14, flex: 1, lineHeight: 19 },
   planCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#1A1A2E',
+    backgroundColor: isDark ? c.card : c.bgAlt,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: '#252540',
+    borderColor: isDark ? c.cardAlt : '#E3E3EA',
     padding: 16,
     marginBottom: 12,
   },
-  planCardActive: { borderColor: '#6C63FF', backgroundColor: '#1E1B3A' },
+  planCardActive: { borderColor: c.accent, backgroundColor: c.accentSoft },
   badge: {
     position: 'absolute',
     top: -9,
     right: 16,
-    backgroundColor: '#22D3A0',
+    backgroundColor: c.success,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
   },
-  badgeText: { color: '#0D0D14', fontSize: 10, fontWeight: '800' },
+  badgeText: {
+    color: isDark ? c.textInverse : c.onAccent,
+    fontSize: 10,
+    fontWeight: '800',
+  },
   radioOuter: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: '#4A4A68',
+    borderColor: isDark ? c.borderStrong : c.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -256,35 +264,35 @@ const styles = StyleSheet.create({
     width: 11,
     height: 11,
     borderRadius: 6,
-    backgroundColor: '#6C63FF',
+    backgroundColor: c.accent,
   },
-  planTitle: { color: '#F0F0FA', fontSize: 15.5, fontWeight: '700' },
-  planNote: { color: '#8A8AA8', fontSize: 12, marginTop: 3 },
-  planPrice: { color: '#F0F0FA', fontSize: 16, fontWeight: '800' },
-  planPeriod: { color: '#8A8AA8', fontSize: 11, marginTop: 2 },
+  planTitle: { color: c.text, fontSize: 15.5, fontWeight: '700' },
+  planNote: { color: c.textMuted, fontSize: 12, marginTop: 3 },
+  planPrice: { color: c.text, fontSize: 16, fontWeight: '800' },
+  planPeriod: { color: c.textMuted, fontSize: 11, marginTop: 2 },
   buyBtn: {
-    backgroundColor: '#6C63FF',
+    backgroundColor: c.accent,
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 6,
-    shadowColor: '#6C63FF',
-    shadowOpacity: 0.5,
+    shadowColor: c.accent,
+    shadowOpacity: isDark ? 0.5 : 0.3,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: isDark ? 6 : 3,
   },
   buyBtnDisabled: { opacity: 0.6 },
-  buyBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  buyBtnText: { color: c.onAccent, fontSize: 16, fontWeight: '700' },
   restoreText: {
-    color: '#8A8AA8',
+    color: c.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 14,
     textDecorationLine: 'underline',
   },
   legal: {
-    color: '#5A5A78',
+    color: isDark ? '#5A5A78' : c.textMuted,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 14,
@@ -299,9 +307,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   linkText: {
-    color: '#8A8AA8',
+    color: c.textMuted,
     fontSize: 12,
     textDecorationLine: 'underline',
   },
-  linkSep: { color: '#5A5A78', fontSize: 12 },
+  linkSep: { color: isDark ? '#5A5A78' : c.textMuted, fontSize: 12 },
 });

@@ -1,10 +1,7 @@
 ﻿import {
-  Text,
-  StyleSheet,
   View,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Keyboard,
   ActivityIndicator,
   Animated,
@@ -30,6 +27,7 @@ import {
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { AGENCIES, parseDateInput, formatDateInput } from './filterUtils';
 import { setFilterUI } from '../redux/fetchData';
+import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 
 // ── Gợi ý (suggest) theo lawDescription, dữ liệu cache ở client ───────────
 const CF_BASE = 'https://us-central1-project2-197c0.cloudfunctions.net';
@@ -91,6 +89,11 @@ async function cfPost(path, body) {
 }
 
 export function Detail2({}) {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  // Checkbox thư viện: bản sáng giữ màu ảnh mặc định, bản tối tô màu chữ
+  const checkBoxColor = isDark ? colors.text : undefined;
+
   const { loading5, info5 } = useSelector(
     state => state['searchLawDescription'],
   );
@@ -285,8 +288,15 @@ export function Detail2({}) {
             key={index}
             style={
               i2.match(/aa/)
-                ? { ...styles.chapterText, backgroundColor: 'yellow' }
-                : { backgroundColor: 'yellow' }
+                ? {
+                    ...styles.chapterText,
+                    backgroundColor: colors.highlightBg,
+                    color: colors.highlightText,
+                  }
+                : {
+                    backgroundColor: colors.highlightBg,
+                    color: colors.highlightText,
+                  }
             }
           >
             {part}
@@ -460,7 +470,7 @@ export function Detail2({}) {
   const NoneOfResutl = () => {
     return (
       <TouchableWithoutFeedback
-        style={{ backgroundColor: 'red' }}
+        style={{ backgroundColor: colors.danger }}
         onPress={() => Keyboard.dismiss()}
       >
         <View
@@ -474,7 +484,7 @@ export function Detail2({}) {
             paddingRight: 30,
           }}
         >
-          <Text style={{ fontSize: 35, textAlign: 'center', color: 'gray' }}>
+          <Text style={{ fontSize: 35, textAlign: 'center', color: colors.textMuted }}>
             Không có kết quả nào được tìm thấy
           </Text>
         </View>
@@ -652,7 +662,8 @@ useEffect(() => {
         valueInput={valueInput}
       />
     ),
-    [SearchResult, valueInput],
+    // styles/colors: Item đọc theme qua closure -> đổi theme phải vẽ lại
+    [SearchResult, valueInput, styles, colors, isDark],
   );
 
   const Item = memo(title => {
@@ -691,7 +702,9 @@ useEffect(() => {
             Object.keys(SearchResult).length >= 1 &&
             !SearchResult.hasOwnProperty('_id')
               ? i % 2
-                ? 'white'
+                ? colors.bg
+                : isDark
+                ? colors.card
                 : '#DDDDDD'
               : 'DDDDDD', // #F9CC76
           // marginBottom: 6,
@@ -729,7 +742,7 @@ useEffect(() => {
                 textAlign: 'left',
                 paddingLeft: 20,
                 fontStyle: 'italic',
-                color: 'gray',
+                color: colors.textMuted,
                 fontSize: 12,
               }}
             >
@@ -743,7 +756,7 @@ useEffect(() => {
                 right: 0,
                 paddingRight: 20,
                 fontStyle: 'italic',
-                color: 'gray',
+                color: colors.textMuted,
                 fontSize: 12,
                 position: 'absolute',
               }}
@@ -782,7 +795,7 @@ useEffect(() => {
             top: 0,
             bottom: 0,
             opacity: 0.7,
-            backgroundColor: 'black',
+            backgroundColor: colors.shadow,
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 10,
@@ -790,23 +803,26 @@ useEffect(() => {
         >
           <Text
             style={{
-              color: 'white',
+              color: colors.onPrimary, // chữ trắng trên lớp phủ tối
               marginBottom: 15,
               fontWeight: 'bold',
             }}
           >
             Vui lòng kiểm tra kết nối mạng ...
           </Text>
-          <ActivityIndicator size="large" color="white"></ActivityIndicator>
+          <ActivityIndicator
+            size="large"
+            color={colors.onPrimary}
+          ></ActivityIndicator>
         </View>
       )}
 
       <View
         style={{
-          backgroundColor: 'green',
+          backgroundColor: colors.primary,
           paddingTop: insets.top + 5,
           borderBottomWidth: 1,
-          borderBottomColor: 'black',
+          borderBottomColor: colors.borderStrong,
           zIndex: 0,
         }}
       >
@@ -817,7 +833,7 @@ useEffect(() => {
               disabled={loading}
               style={{
                 ...styles.inputBtb,
-                backgroundColor: 'white',
+                backgroundColor: colors.inputBg,
                 opacity: loading ? 0.5 : 1,
               }}
               onPress={() => {
@@ -834,14 +850,14 @@ useEffect(() => {
             >
               <Ionicons
                 name="funnel-outline"
-                style={{ ...styles.inputBtbText, color: 'black' }}
+                style={{ ...styles.inputBtbText, color: colors.text }}
               ></Ionicons>
               <View
                 style={{
                   position: 'absolute',
                   height: 25,
                   width: 25,
-                  backgroundColor: 'red',
+                  backgroundColor: colors.danger,
                   borderRadius: 20,
                   right: -10,
                   bottom: -10,
@@ -851,7 +867,7 @@ useEffect(() => {
               >
                 <Text
                   style={{
-                    color: 'white',
+                    color: colors.onAccent,
                     textAlign: 'center',
                     fontSize:
                       choosenLaw.length > 1000
@@ -882,10 +898,14 @@ useEffect(() => {
               style={{
                 position: 'relative',
                 flexDirection: 'row',
-                backgroundColor: 'white',
+                backgroundColor: colors.inputBg,
                 // height: 50,
                 borderRadius: 15,
-                borderColor: warning ? '#FF4500' : 'none',
+                borderColor: warning
+                  ? isDark
+                    ? '#FF6A33'
+                    : '#FF4500'
+                  : 'transparent',
                 borderWidth: warning ? 1 : 0,
               }}
             >
@@ -896,7 +916,7 @@ useEffect(() => {
                 value={input}
                 selectTextOnFocus={true}
                 placeholder="Nhập từ khóa..."
-                placeholderTextColor={'gray'}
+                placeholderTextColor={colors.placeholder}
                 onSubmitEditing={() => {
                   pressToSearch();
                 }}
@@ -925,7 +945,7 @@ useEffect(() => {
                   <Ionicons
                     name="close-circle-outline"
                     style={{
-                      color: 'black',
+                      color: colors.text,
                       fontSize: 20,
                       paddingRight: 8,
                       // textAlign:'right'
@@ -965,7 +985,7 @@ useEffect(() => {
               {loading5 ? (
                 <ActivityIndicator
                   size="small"
-                  color="#f67c1a"
+                  color={colors.warning}
                   // style={{ backgroundColor: 'blue' }}
                 ></ActivityIndicator>
               ) : (
@@ -1019,10 +1039,12 @@ useEffect(() => {
                     }}
                     isChecked={choosenKindLaw.includes(i)}
                     style={{}}
-                    uncheckedCheckBoxColor={'white'}
-                    checkedCheckBoxColor={'white'}
+                    uncheckedCheckBoxColor={colors.onPrimary}
+                    checkedCheckBoxColor={colors.onPrimary}
                   />
-                  <Text style={{ fontSize: 13, color: 'white' }}>{option}</Text>
+                  <Text style={{ fontSize: 13, color: colors.onPrimary }}>
+                    {option}
+                  </Text>
                 </TouchableOpacity>
               );
             },
@@ -1034,7 +1056,7 @@ useEffect(() => {
         style={{
           marginTop: 0,
           flex: 1,
-          backgroundColor: '#EEEFE4',
+          backgroundColor: isDark ? colors.bg : '#EEEFE4',
         }}
       >
         {loading5 && (
@@ -1046,7 +1068,7 @@ useEffect(() => {
               top: 0,
               bottom: 0,
               opacity: 0.8,
-              backgroundColor: 'black',
+              backgroundColor: colors.shadow,
               justifyContent: 'center',
               alignItems: 'center',
               zIndex: 10,
@@ -1060,14 +1082,17 @@ useEffect(() => {
             >
               <Text
                 style={{
-                  color: 'white',
+                  color: colors.onPrimary, // chữ trắng trên lớp phủ tối
                   marginBottom: 15,
                   fontWeight: 'bold',
                 }}
               >
                 Xin vui lòng đợi trong giây lát ...
               </Text>
-              <ActivityIndicator size="large" color="white"></ActivityIndicator>
+              <ActivityIndicator
+                size="large"
+                color={colors.onPrimary}
+              ></ActivityIndicator>
             </View>
           </TouchableOpacity>
         )}
@@ -1075,7 +1100,7 @@ useEffect(() => {
         {loading3 && (
           <View
             style={{
-              backgroundColor: 'black',
+              backgroundColor: isDark ? colors.cardAlt : '#000000',
               alignItems: 'center',
               justifyContent: 'center',
               display: 'flex',
@@ -1094,7 +1119,7 @@ useEffect(() => {
             >
               <Text
                 style={{
-                  color: 'white',
+                  color: isDark ? colors.text : '#FFFFFF',
                   // marginBottom: 15,
                   fontWeight: 'bold',
                   // backgroundColor: 'yellow',
@@ -1110,7 +1135,7 @@ useEffect(() => {
         )}
 
         {(info5 != null && info5.length == 0) || !SearchResult ? (
-          <NoneOfResutl style={{ backgroundColor: 'red' }} />
+          <NoneOfResutl style={{ backgroundColor: colors.danger }} />
         ) : Object.keys(SearchResult).length || info3.length || info5 ? (
           <FlatList
             onScrollBeginDrag={() => {
@@ -1132,7 +1157,7 @@ useEffect(() => {
             ListFooterComponent={
               paper < Math.ceil(Object.keys(LawFilted).length / 30) ? (
                 <>
-                  <ActivityIndicator color="black" />
+                  <ActivityIndicator color={colors.text} />
                   <View
                     style={{
                       height: tabBarHeight,
@@ -1171,11 +1196,11 @@ useEffect(() => {
               width: 48,
               height: 48,
               borderRadius: 24,
-              backgroundColor: 'gray',
+              backgroundColor: colors.textMuted,
               opacity: 0.6,
               alignItems: 'center',
               justifyContent: 'center',
-              shadowColor: 'black',
+              shadowColor: colors.shadow,
               shadowOpacity: 0.3,
               shadowRadius: 3,
               shadowOffset: { width: 0, height: 2 },
@@ -1184,7 +1209,7 @@ useEffect(() => {
           >
             <Ionicons
               name="arrow-up"
-              style={{ color: 'white', fontSize: 26 }}
+              style={{ color: colors.onPrimary, fontSize: 26 }}
             />
           </TouchableOpacity>
         )}
@@ -1193,7 +1218,7 @@ useEffect(() => {
         <>
           <Animated.View
             style={{
-              backgroundColor: 'black',
+              backgroundColor: colors.shadow,
               left: 0,
               right: 0,
               top: 0,
@@ -1236,12 +1261,12 @@ useEffect(() => {
               minHeight: 500,
               right: 50,
               left: 50,
-              backgroundColor: 'white',
+              backgroundColor: colors.surface,
               display: 'flex',
               borderRadius: 20,
               transform: [{ scale: Scale }],
               overflow: 'hidden',
-              shadowColor: 'black',
+              shadowColor: colors.shadow,
               shadowOpacity: 1,
               shadowOffset: {
                 width: 10,
@@ -1254,14 +1279,18 @@ useEffect(() => {
             <View
               style={{
                 flexDirection: 'row',
-                backgroundColor: 'black',
+                backgroundColor: isDark ? colors.cardAlt : '#000000',
                 height: 50,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <Text
-                style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}
+                style={{
+                  color: isDark ? colors.text : '#FFFFFF',
+                  fontWeight: 'bold',
+                  fontSize: 16,
+                }}
               >
                 Nâng cao
               </Text>
@@ -1278,7 +1307,14 @@ useEffect(() => {
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: 'white', fontSize: 13 }}>Xóa lọc</Text>
+                <Text
+                  style={{
+                    color: isDark ? colors.text : '#FFFFFF',
+                    fontSize: 13,
+                  }}
+                >
+                  Xóa lọc
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -1290,7 +1326,7 @@ useEffect(() => {
                     value={input || ''}
                     onChangeText={text => setInput(text)}
                     placeholder="Nhập từ khóa..."
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     style={styles.filterKeywordInput}
                   />
                   {input ? (
@@ -1300,7 +1336,7 @@ useEffect(() => {
                     >
                       <Ionicons
                         name="close-circle-outline"
-                        style={{ color: 'black', fontSize: 20 }}
+                        style={{ color: colors.text, fontSize: 20 }}
                       />
                     </TouchableOpacity>
                   ) : null}
@@ -1321,7 +1357,7 @@ useEffect(() => {
                     value={fromDate}
                     onChangeText={t => setFromDate(formatDateInput(t))}
                     placeholder="DD/MM/YYYY"
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     keyboardType="number-pad"
                     maxLength={10}
                     style={styles.filterDateInput}
@@ -1339,7 +1375,7 @@ useEffect(() => {
                     value={toDate}
                     onChangeText={t => setToDate(formatDateInput(t))}
                     placeholder="DD/MM/YYYY"
-                    placeholderTextColor="gray"
+                    placeholderTextColor={colors.placeholder}
                     keyboardType="number-pad"
                     maxLength={10}
                     style={styles.filterDateInput}
@@ -1376,10 +1412,15 @@ useEffect(() => {
                     }
                   }}
                   isChecked={chosenAgencies.length === AGENCIES.length}
+                  checkBoxColor={checkBoxColor}
                 />
 
                 <Text
-                  style={{ color: 'black', fontWeight: 'bold', marginLeft: 5 }}
+                  style={{
+                    color: colors.text,
+                    fontWeight: 'bold',
+                    marginLeft: 5,
+                  }}
                 >
                   Tất cả
                 </Text>
@@ -1403,9 +1444,14 @@ useEffect(() => {
                       <CheckBox
                         onClick={() => toggleAgency(ag.code)}
                         isChecked={checked}
+                        checkBoxColor={checkBoxColor}
                       />
                       <Text
-                        style={{ marginLeft: 5, color: 'black', flexShrink: 1 }}
+                        style={{
+                          marginLeft: 5,
+                          color: colors.text,
+                          flexShrink: 1,
+                        }}
                       >
                         {ag.name}
                       </Text>
@@ -1417,7 +1463,7 @@ useEffect(() => {
             <TouchableOpacity
               disabled={loading}
               style={{
-                backgroundColor: 'green',
+                backgroundColor: colors.primary,
                 opacity: loading ? 0.6 : 1,
               }}
               onPress={() => {
@@ -1443,7 +1489,7 @@ useEffect(() => {
                   paddingBottom: 10,
                   paddingTop: 10,
                   textAlign: 'center',
-                  color: 'white',
+                  color: colors.onPrimary,
                   fontWeight: 'bold',
                   fontSize: 16,
                 }}
@@ -1485,13 +1531,13 @@ useEffect(() => {
               left: anchor.x - 24,
               width: anchor.w + 48,
               maxHeight: 360,
-              backgroundColor: 'white',
+              backgroundColor: colors.card,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: '#e0e0e0',
+              borderColor: isDark ? colors.border : '#e0e0e0',
               zIndex: 9999,
               elevation: 20,
-              shadowColor: '#000',
+              shadowColor: colors.shadow,
               shadowOpacity: 0.2,
               shadowRadius: 6,
               shadowOffset: { width: 0, height: 3 },
@@ -1516,16 +1562,18 @@ useEffect(() => {
                       paddingVertical: 8,
                       paddingHorizontal: 12,
                       borderBottomWidth: k < suggestions.length - 1 ? 1 : 0,
-                      borderBottomColor: '#f0f0f0',
+                      borderBottomColor: colors.divider,
                     }}
                   >
-                    <Text style={{ fontSize: 13, color: '#333' }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>
                       {range ? (
                         <>
                           {s.d.slice(0, range[0])}
                           <Text
                             style={{
-                              backgroundColor: '#ffe08a',
+                              backgroundColor: isDark
+                                ? colors.highlightBg
+                                : '#ffe08a',
                               fontWeight: 'bold',
                             }}
                           >
@@ -1548,7 +1596,8 @@ useEffect(() => {
   );
 }
 
-const styles = StyleSheet.create({
+// StyleSheet theo theme: c = bảng màu hiện tại
+const makeStyles = (c, isDark) => ({
   titleText: {
     fontSize: 25,
     alignItems: 'center',
@@ -1557,7 +1606,7 @@ const styles = StyleSheet.create({
     marginBottom: 7,
     textAlign: 'center',
     fontWeight: 'bold',
-    color: 'white',
+    color: c.onPrimary,
   },
   inputContainer: {
     display: 'flex',
@@ -1566,8 +1615,8 @@ const styles = StyleSheet.create({
   },
   inputArea: {
     width: '85%',
-    backgroundColor: 'white',
-    color: 'black',
+    backgroundColor: c.inputBg,
+    color: c.text,
     paddingLeft: 12,
     borderRadius: 15,
     paddingTop: 10,
@@ -1580,57 +1629,58 @@ const styles = StyleSheet.create({
   inputBtb: {
     width: '80%',
     height: 30,
-    backgroundColor: 'black',
+    backgroundColor: isDark ? c.card : '#000000',
+    borderColor: isDark ? c.borderStrong : '#000000',
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     // right: 5,
   },
   inputBtbText: {
-    color: 'white',
+    color: isDark ? c.text : '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 20,
   },
   filterLabel: {
-    color: 'black',
+    color: c.text,
     fontWeight: 'bold',
     fontSize: 15,
   },
   filterDateLabel: {
     width: 40,
-    color: 'black',
+    color: c.text,
     fontSize: 14,
   },
   filterDateInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    color: 'black',
+    color: c.text,
   },
   filterKeywordWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 8,
   },
   filterKeywordInput: {
     flex: 1,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    color: 'black',
+    color: c.text,
   },
   agencyRowAll: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     paddingLeft: '5%',
-    backgroundColor: 'rgb(240,240,240)',
-    shadowColor: 'black',
+    backgroundColor: isDark ? c.cardAlt : 'rgb(240,240,240)',
+    shadowColor: c.shadow,
     shadowOpacity: 0.5,
     shadowOffset: { width: 5, height: 5 },
     shadowRadius: 4,
@@ -1674,7 +1724,7 @@ const styles = StyleSheet.create({
 
   chapterText: {
     textAlign: 'center',
-    color: 'black',
+    color: c.text,
     fontWeight: 'bold',
     textAlign: 'center',
     fontSize: 16,
@@ -1682,7 +1732,7 @@ const styles = StyleSheet.create({
     // backgroundColor: 'yellow',
   },
   descriptionText: {
-    color: 'black',
+    color: c.text,
     fontSize: 14,
     textAlign: 'justify',
     // textAlign: 'auto',

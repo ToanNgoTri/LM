@@ -235,6 +235,30 @@ export const callOneLaw = onRequest(async (req, res) => {
   }
 });
 
+// Văn bản app TỰ TẢI về máy ở lần mở đầu tiên sau khi cài (DefaultLaws, sửa
+// bằng màn "Tải sẵn" của lawRNTool). Doc: { _id: lawId, order, addedAt }.
+// Trả { ids } theo order; bỏ id không còn trong LawCollection.
+export const getDefaultLaws = onRequest(async (req, res) => {
+  try {
+    const db = client.db('LawMachine');
+    const docs = await db
+      .collection('DefaultLaws')
+      .find({}, { projection: { _id: 1 } })
+      .sort({ order: 1, addedAt: 1 })
+      .toArray();
+    const ids = docs.map(d => d._id);
+    const found = await db
+      .collection('LawCollection')
+      .find({ _id: { $in: ids } }, { projection: { _id: 1 } })
+      .toArray();
+    const ok = new Set(found.map(d => d._id));
+    res.json({ ids: ids.filter(id => ok.has(id)) });
+  } catch (e) {
+    console.error('getDefaultLaws error:', e);
+    res.status(500).json({ ids: [], error: e?.message || String(e) });
+  }
+});
+
 // Văn bản ký trong N ngày gần nhất (mặc định 30), không giới hạn số lượng.
 export const getlastedlaws = onRequest(async (req, res) => {
   if (req.method === 'POST') {
@@ -575,10 +599,19 @@ export const askLawAI = onRequest(
 
       // Văn bản có trong CONTEXT -> app dùng để biến số văn bản trong câu trả
       // lời thành link mở Detail5 (lawId = _id của văn bản trong LawMachine).
+      // Kèm tiêu đề các Điều trong context ("Điều 5. ...") -> app biến "Điều 5"
+      // trong câu trả lời thành link mở thẳng tới Điều đó.
       const sources = [];
       for (const c of picked) {
         const id = c.data.lawId;
-        if (id && !sources.some(s => s.id === id)) sources.push({ id });
+        if (!id) continue;
+        let src = sources.find(s => s.id === id);
+        if (!src) {
+          src = { id, articles: [] };
+          sources.push(src);
+        }
+        const art = c.data.article;
+        if (art && !src.articles.includes(art)) src.articles.push(art);
       }
 
       const fmt = t => (Number.isNaN(t) ? '(không rõ)' : new Date(t).toLocaleDateString('vi-VN'));

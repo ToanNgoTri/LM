@@ -1,0 +1,9 @@
+{
+  "functions": [{ "source": "functions", "codebase": "default" }],
+  "emulators": {
+    "functions": { "host": "0.0.0.0", "port": 5002 },
+    "hub": { "port": 4402 },
+    "logging": { "port": 4502 },
+    "ui": { "enabled": false }
+  }
+}

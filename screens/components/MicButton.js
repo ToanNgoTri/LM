@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  StyleSheet,
   TouchableOpacity,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
@@ -15,6 +14,7 @@ import {
   start,
 } from '../../utils/speechService';
 import { appendDictation } from '../../utils/dictation';
+import { useTheme, useThemedStyles } from '../../theme';
 
 /**
  * Bao nhiêu mili-giây mới cập nhật chữ đang bay một lần. Bộ nhận dạng bắn kết
@@ -50,6 +50,8 @@ export default function MicButton({
   active = true,
   size = 36,
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [available, setAvailable] = useState(false);
   const [recording, setRecording] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -239,26 +241,34 @@ export default function MicButton({
       )}
 
       {starting ? (
-        <ActivityIndicator size="small" color="#E5484D" />
+        <ActivityIndicator size="small" color={colors.danger} />
       ) : (
         <Ionicons
           // Không dùng 'stop' ở đây: nút gửi lúc đang stream cũng là hình vuông
           // 'stop' nền đỏ, hai nút nằm cạnh nhau sẽ y hệt nhau.
           name={recording ? 'mic-off' : 'mic'}
           size={18}
-          color={recording ? '#fff' : '#8A8AA8'}
+          color={
+            recording
+              ? colors.onAccent
+              : isDark
+              ? colors.textMuted
+              : colors.accent
+          }
         />
       )}
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
+// Nút nằm trong thanh nhập của Chat AI: bản tối giữ nền card cũ, bản sáng
+// dùng nền tím nhạt cho hợp tông Chat AI.
+const makeStyles = (c, isDark) => ({
   button: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
+    backgroundColor: isDark ? c.card : c.accentSoft,
   },
-  buttonRecording: { backgroundColor: '#E5484D' },
-  pulse: { position: 'absolute', backgroundColor: '#E5484D' },
+  buttonRecording: { backgroundColor: c.danger },
+  pulse: { position: 'absolute', backgroundColor: c.danger },
 });
