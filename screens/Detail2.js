@@ -315,11 +315,13 @@ export function Detail2({}) {
     });
 
     return (
+      // View chặn kế thừa style từ Text cha -> phải tự đặt màu chữ (dark mode)
       <View>
         <Text
-          style={
-            i2.match(/aa/) ? { textAlign: 'center' } : { textAlign: 'justify' }
-          }
+          style={{
+            color: colors.text,
+            textAlign: i2.match(/aa/) ? 'center' : 'justify',
+          }}
         >
           {'   '}
           {result}

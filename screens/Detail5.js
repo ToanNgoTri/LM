@@ -14,6 +14,7 @@ import {
   Pressable,
   Vibration,
   Platform,
+  LayoutAnimation,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -512,30 +513,42 @@ export function Detail5() {
 
   // Chỉ nâng thanh tìm kiếm lên đỉnh bàn phím (thay cho KeyboardAvoidingView
   // bọc cả màn hình: nó đẩy cả layout lên, lộ khoảng nền đen phía dưới).
-  const keyboardLift = useRef(new Animated.Value(0)).current;
+  // Phần đáy màn hình bàn phím đang chiếm (0 = đóng). Dùng state, không dùng
+  // Animated: trên Android (Fabric) giá trị Animated JS không được vẽ/bị mất
+  // khi render lại -> thanh tìm kiếm nằm dưới bàn phím.
+  const [keyboardInset, setKeyboardInset] = useState(0);
   useEffect(() => {
     const isIOS = Platform.OS === 'ios';
-    const move = (toValue, duration) =>
-      Animated.timing(keyboardLift, {
-        toValue,
-        duration: isIOS ? duration || 250 : 120,
-        useNativeDriver: true,
-      }).start();
+    const update = (value, e) => {
+      if (isIOS && e?.duration) {
+        LayoutAnimation.configureNext(
+          LayoutAnimation.create(e.duration, LayoutAnimation.Types.keyboard),
+        );
+      }
+      setKeyboardInset(value);
+    };
     const showSub = Keyboard.addListener(
       isIOS ? 'keyboardWillShow' : 'keyboardDidShow',
       e =>
-        // findArea đang nằm sát đỉnh thanh chức năng -> chỉ nâng phần chênh
-        move(-Math.max(0, e.endCoordinates.height - functionTabHeight), e.duration),
+        // Tính từ đỉnh bàn phím (screenY), không từ height: Android
+        // (edge-to-edge) trả height KHÔNG gồm thanh điều hướng -> thiếu.
+        update(
+          Math.max(
+            0,
+            Dimensions.get('window').height - e.endCoordinates.screenY,
+          ),
+          e,
+        ),
     );
     const hideSub = Keyboard.addListener(
       isIOS ? 'keyboardWillHide' : 'keyboardDidHide',
-      e => move(0, e?.duration),
+      e => update(0, e),
     );
     return () => {
       showSub.remove();
       hideSub.remove();
     };
-  }, [functionTabHeight]);
+  }, []);
 
   const list = useRef(null);
   const textInputFind = useRef(null);
@@ -874,10 +887,14 @@ export function Detail5() {
             );
           }, []);
         return (
+          // View chặn kế thừa style từ Text cha -> phải tự đặt màu chữ (dark mode)
           <View>
             <Text
               noScale
-              style={[{ textAlign: 'justify', fontSize, lineHeight }, textStyle]}
+              style={[
+                { textAlign: 'justify', color: colors.text, fontSize, lineHeight },
+                textStyle,
+              ]}
             >
               {searchedPara}
             </Text>
@@ -1589,7 +1606,7 @@ export function Detail5() {
       )}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        // tắt: thanh tìm kiếm tự nâng theo bàn phím (keyboardLift)
+        // tắt: thanh tìm kiếm tự nâng theo bàn phím (keyboardInset)
         enabled={false}
       >
         <View style={{ flex: 1, position: 'relative' }}>
@@ -1986,12 +2003,15 @@ export function Detail5() {
             style={{
               ...styles.findArea,
               width: widthDevice,
-              transform: [{ translateY: transY }],
+              // bàn phím mở: đặt mép dưới ngay đỉnh bàn phím bằng `bottom`,
+              // không cộng dồn với transY (Animated JS bị mất khi render lại)
+              // chỉ khi đang mở thanh tìm kiếm: ô tìm điều luật ở panel bên
+              // cũng bật bàn phím, không được kéo thanh đang ẩn lên theo
+              ...(find && keyboardInset
+                ? { bottom: keyboardInset }
+                : { transform: [{ translateY: transY }] }),
             }}
           >
-            <Animated.View
-              style={{ transform: [{ translateY: keyboardLift }] }}
-            >
             <View
               // distance={10}
               // startColor={'gray'}
@@ -2177,7 +2197,6 @@ export function Detail5() {
                 </TouchableOpacity>
               </View>
             </View>
-            </Animated.View>
           </Animated.View>
 
           {/* Panel chỉnh cỡ chữ: nền trong suốt để thấy chữ đổi ngay phía sau */}

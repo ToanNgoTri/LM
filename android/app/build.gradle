@@ -82,8 +82,8 @@ android {
         applicationId "com.lawmachine"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 100
-        versionName "3.7"
+        versionCode 101
+        versionName "3.8"
     }
     signingConfigs {
         debug {
@@ -104,6 +104,8 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            // cài song song với bản release trên cùng máy (không ghi đè)
+            applicationIdSuffix ".debug"
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
