@@ -259,6 +259,11 @@ export function Detail1({}) {
             : isDark
             ? colors.cardAlt
             : '#DDDDDD',
+          // tối: kẻ mảnh để tách các hàng
+          ...(isDark && {
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }),
         }}
         onPress={() => {
           navigation.push(`accessLaw`, {

@@ -703,12 +703,20 @@ useEffect(() => {
           backgroundColor:
             Object.keys(SearchResult).length >= 1 &&
             !SearchResult.hasOwnProperty('_id')
-              ? i % 2
+              ? isDark
+                ? // tối: không dùng colors.bg cho hàng lẻ (trùng nền danh sách)
+                  i % 2
+                  ? colors.card
+                  : colors.cardAlt
+                : i % 2
                 ? colors.bg
-                : isDark
-                ? colors.card
                 : '#DDDDDD'
               : 'DDDDDD', // #F9CC76
+          // tối: kẻ mảnh để tách các hàng
+          ...(isDark && {
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+          }),
           // marginBottom: 6,
         }}
         onPress={() => {
