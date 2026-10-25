@@ -95,7 +95,6 @@ export const articleNo = title => {
 function linkArticles(text, sources, ranges, overlaps) {
   const lawRanges = ranges.slice();
   const ids = [...new Set((sources || []).map(s => s && s.id).filter(Boolean))];
-  const added = [];
 
   for (const m of text.matchAll(ARTICLE_REGEX)) {
     const start = m.index;
@@ -122,7 +121,17 @@ function linkArticles(text, sources, ranges, overlaps) {
     if (!lawId && ids.length === 1) lawId = ids[0];
     if (!lawId) continue;
 
-    added.push({ start, end, lawId, article: no });
+    // Dòng tiêu đề trích dẫn "Điều 25. Thời gian thử việc" (Điều đứng đầu
+    // dòng, ngay sau là "." hoặc ":") -> link cả dòng, không chỉ "Điều 25".
+    let linkEnd = end;
+    const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    if (!text.slice(lineStart, start).trim() && /^[.:]\s/.test(text.slice(end, end + 2))) {
+      const nl = text.indexOf('\n', end);
+      const lineEnd = (nl < 0 ? text : text.slice(0, nl)).trimEnd().length;
+      if (lineEnd > end && !overlaps(start, lineEnd)) linkEnd = lineEnd;
+    }
+
+    // push thẳng vào ranges để overlaps() chặn "Điều" khác nằm trong dòng đã link.
+    ranges.push({ start, end: linkEnd, lawId, article: no });
   }
-  ranges.push(...added);
 }
