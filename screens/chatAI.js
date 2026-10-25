@@ -64,17 +64,21 @@ const RESUME_MAX_POLLS = 60;
 const ZOMBIE_CHECK_MS = 3000;
 // Cứ bấy nhiêu ký tự stream ra thì rung một nhịp — rung thưa cho đỡ rối tay.
 const VIBRATE_EVERY_CHARS = 8;
-// Tốc độ GÕ mong muốn: 14ms cho mỗi ký tự (~70 ký tự/giây) — đủ thong thả để
-// mắt đọc theo kịp. Đây chỉ là tốc độ hiển thị, KHÔNG còn là nhịp vẽ lại.
+// Tốc độ GÕ mong muốn: 5ms cho mỗi ký tự (~200 ký tự/giây). Đây chỉ là tốc độ
+// hiển thị, KHÔNG còn là nhịp vẽ lại.
 //
 // Đo trên máy thật: một lần vẽ tốn ~40ms ở luồng giao diện, còn setTimeout của
 // RN thì khoá theo khung hình nên không bao giờ về sớm hơn ~17ms. Vẽ từng ký tự
 // một vì thế tự đặt trần ~18 ký tự/giây, dù phần JS chỉ tốn 0,4ms. Gộp nhiều ký
 // tự vào chung một lần vẽ thì cùng ngần ấy công mà chữ chạy đúng tốc độ.
-const MS_PER_CHAR = 14;
+const MS_PER_CHAR = 5;
 // Trần ký tự cho mỗi lần vẽ, để lúc app vừa chạy lại sau một quãng dài không
 // đổ ụp cả đoạn ra màn hình.
-const MAX_CHARS_PER_FLUSH = 24;
+const MAX_CHARS_PER_FLUSH = 80;
+// Server đổ về nhanh hơn tốc độ gõ thì hàng đợi dồn lại: mỗi lần vẽ lấy thêm
+// 1/CATCH_UP_FLUSHES phần còn tồn, để chữ hiện kịp với server (~1 giây) thay
+// vì bắt người dùng ngồi chờ gõ nốt sau khi server đã trả lời xong.
+const CATCH_UP_FLUSHES = 20;
 
 // jobId: server dùng làm _id của job -> phải khớp /^[A-Za-z0-9_-]{8,64}$/.
 const makeJobId = () =>
@@ -652,7 +656,11 @@ const scheduleNextChar = useCallback(() => {
   const take = Math.min(
     queue.length,
     MAX_CHARS_PER_FLUSH,
-    Math.max(1, Math.round(elapsed / MS_PER_CHAR)),
+    Math.max(
+      1,
+      Math.round(elapsed / MS_PER_CHAR),
+      Math.ceil(queue.length / CATCH_UP_FLUSHES),
+    ),
   );
   const chunk = queue.splice(0, take).join('');
   const id = assistantIdRef.current;

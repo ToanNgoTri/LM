@@ -122,16 +122,26 @@ function linkArticles(text, sources, ranges, overlaps) {
     if (!lawId) continue;
 
     // Dòng tiêu đề trích dẫn "Điều 25. Thời gian thử việc" (Điều đứng đầu
-    // dòng, ngay sau là "." hoặc ":") -> link cả dòng, không chỉ "Điều 25".
+    // dòng) -> link cả dòng, không chỉ "Điều 25". Model không phải lúc nào cũng
+    // viết đúng mẫu: có khi đánh số trước ("2. Điều 25."), bỏ dấu chấm, dùng
+    // "-" / "–" / ":" hoặc kèm số văn bản ngay trên dòng đó.
     let linkEnd = end;
     const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-    if (!text.slice(lineStart, start).trim() && /^[.:]\s/.test(text.slice(end, end + 2))) {
+    const lead = text.slice(lineStart, start);
+    if (/^\s*(?:(?:\d+|[a-zđ])[.)]\s*)?$/u.test(lead)) {
       const nl = text.indexOf('\n', end);
       const lineEnd = (nl < 0 ? text : text.slice(0, nl)).trimEnd().length;
-      if (lineEnd > end && !overlaps(start, lineEnd)) linkEnd = lineEnd;
+      // Số văn bản cùng văn bản nằm trong dòng thì gộp vào link Điều (cùng mở
+      // một văn bản); số của văn bản khác thì giữ link riêng -> chỉ link "Điều N".
+      const inner = ranges.filter(r => r.start < lineEnd && r.end > start);
+      if (lineEnd > end && inner.every(r => r.lawId === lawId && !r.article && r.start >= end)) {
+        for (const r of inner) ranges.splice(ranges.indexOf(r), 1);
+        linkEnd = lineEnd;
+      }
     }
 
     // push thẳng vào ranges để overlaps() chặn "Điều" khác nằm trong dòng đã link.
     ranges.push({ start, end: linkEnd, lawId, article: no });
   }
+
 }
