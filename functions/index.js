@@ -441,7 +441,7 @@ export const askLawAI = onRequest(
     // Model trả phí (chất lượng cao hơn) — thử TRƯỚC cho Premium / lượt dùng thử,
     // sau đó mới fallback sang model free để không bao giờ trả lỗi trắng.
     const PAID_MODELS = [
-    'qwen/qwen3-30b-a3b-instruct-2507'
+    'qwen/qwen3.8-27b'
   ];
 
     const PREMIUM_MODELS = [...PAID_MODELS, ...FREE_MODELS];
@@ -617,8 +617,9 @@ export const askLawAI = onRequest(
       const fmt = t => (Number.isNaN(t) ? '(không rõ)' : new Date(t).toLocaleDateString('vi-VN'));
       const context = picked
         .map(
-          c =>
-            `[Số văn bản: ${c.data.lawId}\n${c.data.fullText}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))} có hiệu lực ngày ${fmt(c.activeT)}]`,
+          (c, i) =>
+            // Không bọc [ ] quanh đoạn: model hay chép nguyên dấu ngoặc ra câu trả lời.
+            `ĐOẠN ${i + 1}\nSố văn bản: ${c.data.lawId}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))}, có hiệu lực ngày ${fmt(c.activeT)}\n${c.data.fullText}`,
         )
         .join('\n\n');
 
@@ -635,21 +636,32 @@ Nhiệm vụ:
   định đã bị thay thế.
 - Trả lời NGẮN GỌN, dễ hiểu.
 - Hãy diễn giải lại bằng ngôn ngữ tự nhiên.
+- Không được bịa số điều, khoản hoặc tên văn bản. Chỉ sử dụng thông tin có trong CONTEXT.
 
-Khi câu trả lời có căn cứ pháp luật:
-1. Luôn nêu căn cứ trước.
-2. Ghi theo mẫu:
-   "Căn cứ [Tên văn bản] số [Số văn bản] ngày ...., có hiệu lực từ ngày ... .   Điều [1|2|3]. [ghi rõ nội dung trích yếu]:
-   [[1|2|3]. nội dung cụ thể ]...
-2. Sau đó mới giải thích nội dung bằng lời văn tự nhiên.
-4. Không được bịa số điều, khoản hoặc tên văn bản. Chỉ sử dụng thông tin có trong CONTEXT.
+Khi câu trả lời có căn cứ pháp luật, trình bày theo thứ tự:
+1. Dòng căn cứ: tên văn bản, số văn bản, ngày ký, ngày có hiệu lực.
+2. Xuống dòng, ghi số Điều và tên Điều.
+3. Mỗi khoản, mỗi điểm trích dẫn nằm trên MỘT DÒNG RIÊNG, giữ nguyên số khoản (1. 2. 3.) và chữ điểm (a) b) c)) như trong văn bản.
+4. Để một dòng trống, rồi giải thích bằng lời văn tự nhiên.
+Nếu dùng nhiều văn bản thì lặp lại mục 1 đến 3 cho từng văn bản, cách nhau một dòng trống.
+
+Ví dụ đúng định dạng:
+Căn cứ Bộ luật Lao động số 45/2019/QH14 ngày 20/11/2019, có hiệu lực từ ngày 01/01/2021.
+Điều 25. Thời gian thử việc
+Thời gian thử việc do hai bên thỏa thuận căn cứ vào tính chất và mức độ phức tạp của công việc nhưng chỉ được thử việc một lần đối với một công việc và bảo đảm điều kiện sau đây:
+1. Không quá 180 ngày đối với công việc của người quản lý doanh nghiệp;
+2. Không quá 60 ngày đối với công việc có chức danh nghề nghiệp cần trình độ chuyên môn, kỹ thuật từ cao đẳng trở lên;
+
+Như vậy, thời gian thử việc dài nhất là 180 ngày và chỉ áp dụng cho người quản lý doanh nghiệp.
 
 Định dạng đầu ra:
-- Chỉ được xuất plain text.
-- Cấm sử dụng các ký tự Markdown như *, **, #, -, _, >, 
+- Chỉ xuất văn bản thuần, xuống dòng bằng ký tự xuống dòng bình thường.
+- KHÔNG dùng ký tự Markdown hay trang trí: * ** # _ > \` ~ | và gạch đầu dòng "-".
+- KHÔNG thêm ngoặc vuông [ ], ngoặc nhọn { }, dấu ngoặc kép bao quanh đoạn trích, hay dấu "..." nếu văn bản gốc không có.
+- Chỉ giữ dấu câu có trong văn bản được trích dẫn và dấu câu thông thường của tiếng Việt.
 
 Nếu không đủ thông tin thì trả lời:
-"Không tìm thấy thông tin phù hợp."
+Không tìm thấy thông tin phù hợp.
 
 CONTEXT:
 ${context}`,
@@ -657,7 +669,8 @@ ${context}`,
 
       const userMsg = {
         role: 'user',
-        content: `Dữ liệu tham khảo:\n${context}\n\nCâu hỏi:\n${question}\nHãy trả lời ngắn gọn và diễn giải lại.`,
+        // CONTEXT đã nằm trong systemMsg -> không lặp lại ở đây (gấp đôi token).
+        content: `Câu hỏi:\n${question}\nHãy trả lời ngắn gọn và diễn giải lại.`,
       };
 
       let llmRes = null;
@@ -684,6 +697,10 @@ ${context}`,
               temperature: 0.2,
               // 500 token chỉ ~1.500 ký tự tiếng Việt -> câu dài bị cắt ngang.
               max_tokens: 4096,
+              // Model reasoning (qwen3.8...) nghĩ trước khi viết: câu khó thì
+              // phần nghĩ ăn hết max_tokens (finish_reason 'length') -> 0 chữ
+              // trả lời -> báo "bận". Tắt hẳn để chữ ra ngay.
+              reasoning: { enabled: false },
               stream: true,
             }),
           });
