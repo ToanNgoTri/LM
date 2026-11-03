@@ -29,6 +29,7 @@ export const LASTED_LAW_FILE = DOC + '/lastedLaw.txt';
 export const APPEAR_FILE = DOC + '/Appear.txt';
 export const SETTINGS_FILE = DOC + '/settings.txt'; // tuỳ chỉnh đọc (cỡ chữ...)
 export const AI_HISTORY_FILE = DOC + '/aiHistory.txt'; // lịch sử Chat AI (20 cuộc gần nhất)
+export const LAW_COLORS_FILE = DOC + '/lawColors.txt'; // màu card văn bản ở Home: { lawKey: '#hex' }
 export const DEFAULT_LAWS_FILE = DOC + '/defaultLaws.txt'; // trạng thái tự tải văn bản mặc định (utils/defaultLaws)
 
 // Chạy đúng một lần cho cả vòng đời app; mọi hàm đọc/ghi bên dưới đều await
@@ -80,6 +81,34 @@ export async function writeUserJson(path, value) {
   } catch (e) {
     console.log('[userFiles] ghi lỗi', path, e?.message);
     return false;
+  }
+}
+
+/**
+ * Xoá hẳn một văn bản đã tải: nội dung (downloaded), vị trí trong danh sách
+ * Home (order), Điều đã ghi nhớ (bookmarks) và màu card (lawColors).
+ * Cùng việc với DeleteInternal ở Detail5, dùng cho kéo-vào-thùng-rác ở Home.
+ */
+export async function deleteDownloadedLaw(lawKey) {
+  const content = (await readUserJson(DOWNLOADED_FILE, {})) || {};
+  if (content[lawKey]) {
+    delete content[lawKey];
+    await writeUserJson(DOWNLOADED_FILE, content);
+  }
+
+  const orderRaw = await readUserJson(ORDER_FILE, []);
+  const order = Array.isArray(orderRaw) ? orderRaw : [];
+  await writeUserJson(
+    ORDER_FILE,
+    order.filter(item => Object.keys(item)[0] !== lawKey),
+  );
+
+  for (const path of [BOOKMARKS_FILE, LAW_COLORS_FILE]) {
+    const all = await readUserJson(path, null);
+    if (all && all[lawKey] !== undefined) {
+      delete all[lawKey];
+      await writeUserJson(path, all);
+    }
   }
 }
 

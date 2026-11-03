@@ -1,6 +1,11 @@
 import React, { forwardRef, memo, useImperativeHandle } from 'react';
 import Animated, { scrollTo, runOnUI } from 'react-native-reanimated';
-import { ScrollView } from 'react-native-gesture-handler';
+// ScrollView GỐC của RN, KHÔNG dùng bản của gesture-handler: bản đó đặt
+// disallowInterruption nên khi ngón tay vuốt hơi chéo, nó nhận cử chỉ dọc rồi
+// HUỶ cử chỉ vuốt-trái-để-xoá đang chạy (card bật về, nền đỏ chớp rồi tắt).
+// ScrollView gốc thì gesture-handler tự chặn intercept khi một cử chỉ đã
+// kích hoạt (vuốt xoá / nhấn-giữ-kéo), còn cuộn dọc bình thường vẫn như cũ.
+import { ScrollView } from 'react-native';
 import { DropProvider, SortableDirection } from 'react-native-reanimated-dnd';
 import { useSortableListSmooth } from './useSortableListSmooth';
 import { useThemedStyles } from '../../theme';
@@ -32,6 +37,7 @@ export const SortableLawList = memo(
       itemKeyExtractor,
       style,
       contentContainerStyle,
+      containerHeight,
     },
     ref,
   ) {
@@ -48,6 +54,7 @@ export const SortableLawList = memo(
       itemHeight,
       estimatedItemHeight,
       itemKeyExtractor,
+      containerHeight,
     });
 
     useImperativeHandle(

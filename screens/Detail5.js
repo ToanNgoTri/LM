@@ -503,6 +503,37 @@ export function Detail5() {
 
   const animatedForNavi = useRef(new Animated.Value(0)).current;
 
+  // ── Panel Mục lục/Ghi nhớ: trượt nhanh + hẹn ẩn HUỶ ĐƯỢC ─────────────────
+  // Trước đây mỗi nút gọi setTimeout(setShowArticle(false), 600) không lưu lại.
+  // Nếu panel chưa thu xong mà người dùng bấm mở chức năng khác, cái hẹn cũ vẫn
+  // nổ và tắt mất panel vừa mở (hoặc gỡ panel giữa lúc đang trượt) -> lỗi.
+  // Giờ: chỉ giữ MỘT hẹn ẩn, mở panel là huỷ hẹn; animation cũ bị stop trước
+  // khi chạy animation mới nên không giật/chồng nhau.
+  const PANEL_DURATION = 220;
+  const hidePanelTimer = useRef(null);
+  const cancelHidePanel = () => {
+    if (hidePanelTimer.current) {
+      clearTimeout(hidePanelTimer.current);
+      hidePanelTimer.current = null;
+    }
+  };
+  const hidePanelLater = (delay = PANEL_DURATION) => {
+    cancelHidePanel();
+    hidePanelTimer.current = setTimeout(() => {
+      hidePanelTimer.current = null;
+      setShowArticle(false);
+    }, delay);
+  };
+  const animateNavi = (toValue, duration = PANEL_DURATION) => {
+    animatedForNavi.stopAnimation();
+    Animated.timing(animatedForNavi, {
+      toValue,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  };
+  useEffect(() => cancelHidePanel, []);
+
   const insets = useSafeAreaInsets(); // lất chiều cao để manu top iphone
 
   // Phần safe-area thanh chức năng cần chừa + chiều cao thật của nó.
@@ -1799,24 +1830,15 @@ export function Detail5() {
                 onToggleBookmark={toggleBookmark}
                 onClose={() => {
                   Keyboard.dismiss();
-                  setTimeout(() => {
-                    setShowArticle(false);
-                  }, 600);
-                  Animated.timing(animatedForNavi, {
-                    toValue: 0,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
+                  hidePanelLater();
+                  animateNavi(0);
                 }}
                 onSelect={y => {
                   Keyboard.dismiss();
+                  cancelHidePanel();
                   setShowArticle(false);
                   list.current.scrollTo({ y: y - 55 });
-                  Animated.timing(animatedForNavi, {
-                    toValue: 0,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
+                  animateNavi(0);
                 }}
               />
             )}
@@ -1838,10 +1860,7 @@ export function Detail5() {
                 onPress={() => {
                   setFind(false);
 
-                  let timeOut = setTimeout(() => {
-                    setShowArticle(false);
-                    return () => {};
-                  }, 600);
+                  hidePanelLater();
 
                   // đang thu gọn TOÀN BỘ -> mở ra; còn lại (đang mở hết hoặc mở
                   // một phần) -> thu gọn toàn bộ.
@@ -1855,12 +1874,7 @@ export function Detail5() {
                     Shrink();
                   }
 
-                  Animated.timing(animatedForNavi, {
-                    toValue: 0,
-                    // toValue:100,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
+                  animateNavi(0);
                 }}
               >
                 <Ionicons
@@ -1878,10 +1892,7 @@ export function Detail5() {
               onPress={() => {
                 if (list.current) {
                   list.current.scrollTo({ y: 0 });
-                  let timeOut = setTimeout(() => {
-                    setShowArticle(false);
-                    return () => {};
-                  }, 600);
+                  hidePanelLater();
                 }
               }}
             >
@@ -1896,15 +1907,8 @@ export function Detail5() {
               style={styles.tab}
               onPress={() => {
                 setFind(!find);
-                let timeOut = setTimeout(() => {
-                  setShowArticle(false);
-                  return () => {};
-                }, 600);
-                Animated.timing(animatedForNavi, {
-                  toValue: !find ? 80 : 0,
-                  duration: 600,
-                  useNativeDriver: false,
-                }).start();
+                hidePanelLater(400);
+                animateNavi(!find ? 80 : 0, 400);
 
                 setTittleArray([]);
                 setTittleArray2([]);
@@ -1926,21 +1930,15 @@ export function Detail5() {
                   // đang mở đúng chế độ 'article' -> đóng; ngược lại -> mở chế độ article
                   const willClose = showArticle && panelMode === 'article';
                   if (willClose) {
-                    let timeOut = setTimeout(() => {
-                      setShowArticle(false);
-                      return () => {};
-                    }, 600);
+                    hidePanelLater();
                   } else {
+                    cancelHidePanel();
                     setPanelMode('article');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
-                  Animated.timing(animatedForNavi, {
-                    toValue: willClose ? 0 : -100,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
+                  animateNavi(willClose ? 0 : -100);
 
                   setTittleArray([]);
                   setTittleArray2([]);
@@ -1963,21 +1961,15 @@ export function Detail5() {
                   // đang mở đúng chế độ 'bookmark' -> đóng; ngược lại -> mở chế độ ghi nhớ
                   const willClose = showArticle && panelMode === 'bookmark';
                   if (willClose) {
-                    let timeOut = setTimeout(() => {
-                      setShowArticle(false);
-                      return () => {};
-                    }, 600);
+                    hidePanelLater();
                   } else {
+                    cancelHidePanel();
                     setPanelMode('bookmark');
                     setShowArticle(true);
                   }
                   setFind(false);
                   Keyboard.dismiss();
-                  Animated.timing(animatedForNavi, {
-                    toValue: willClose ? 0 : -100,
-                    duration: 600,
-                    useNativeDriver: false,
-                  }).start();
+                  animateNavi(willClose ? 0 : -100);
 
                   setTittleArray([]);
                   setTittleArray2([]);

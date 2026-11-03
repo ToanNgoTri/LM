@@ -5,7 +5,10 @@ import {
   TouchableWithoutFeedback,
   FlatList,
   DeviceEventEmitter,
+  Modal,
+  Pressable,
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import {
   useState,
   useEffect,
@@ -20,12 +23,23 @@ import {
   // BoxInHomeScreen
 } from '../App';
 import Ionicons from '@react-native-vector-icons/ionicons';
-import { ORDER_FILE, readUserJson, writeUserJson } from '../storage/userFiles';
+import {
+  ORDER_FILE,
+  LAW_COLORS_FILE,
+  deleteDownloadedLaw,
+  readUserJson,
+  writeUserJson,
+} from '../storage/userFiles';
 import { DOWNLOADED_CHANGED } from '../utils/defaultLaws';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SortableItem } from 'react-native-reanimated-dnd';
 import { SortableLawList } from './components/SortableLawList';
+import {
+  SwipeToDelete,
+  closeOpenSwipe,
+  swipeDragLock,
+} from './components/SwipeToDelete';
 import { useTabBarHeight } from '../hooks/useTabBarHeight';
 import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 
@@ -34,17 +48,73 @@ import { Text, TextInput, useTheme, useThemedStyles } from '../theme';
 // ITEM_HEIGHT chỉ còn là chiều cao TỐI THIỂU của card + giá trị ước lượng ban đầu.
 const ITEM_HEIGHT = 110;
 const GAP = 8;
+// style cố định (không tạo object mới mỗi render) để SortableLawList (memo)
+// KHÔNG render lại khi Home đổi state lúc đang kéo (hiện thùng rác...).
+const SORTABLE_STYLE = { flex: 1 };
 
 /* ------------------------------------------------------------------ */
 /* Thẻ hiển thị một văn bản (dùng chung cho cả list kéo & list tìm kiếm) */
 /* ------------------------------------------------------------------ */
 const NOOP = () => {};
 
+// Bảng màu người dùng chọn cho từng card (chữ trắng đọc rõ trên mọi màu).
+// null = màu mặc định (xanh thương hiệu; Hiến pháp vẫn đỏ).
+const LAW_COLOR_CHOICES = [
+  null,
+  '#C62828', // đỏ
+  '#E65100', // cam
+  '#AD8B00', // vàng đậm
+  '#2E7D32', // xanh lá đậm
+  '#00838F', // xanh ngọc
+  '#1565C0', // xanh dương
+  '#283593', // chàm
+  '#6A1B9A', // tím
+  '#AD1457', // hồng
+  '#5D4037', // nâu
+  '#455A64', // xám xanh
+];
+
+// Chữ đã gõ ở ô tìm kiếm, giữ ở mức module để vẫn còn kể cả khi Home bị
+// unmount (ví dụ hệ điều hành thu hồi màn hình nền) rồi dựng lại.
+let lastHomeSearch = '';
+
+// Lọc danh sách theo chữ gõ (tên hiển thị / trích yếu / số hiệu).
+function filterLaws(list, query) {
+  if (!Array.isArray(list)) return [];
+  if (!query) return list;
+  // Thoát mọi ký tự đặc biệt của regex; '/' và '\' coi như ký tự bất kỳ
+  // (số hiệu "12/2024/QH15" gõ kiểu nào cũng khớp) như logic cũ.
+  // Tách theo '/' '\' TRƯỚC rồi mới thoát từng đoạn, để không đụng vào
+  // dấu '\' do bước thoát sinh ra.
+  const pattern = query
+    .split(/[/\\]/)
+    .map(part => part.replace(/[.*+?^${}()|[\]]/g, '\\$&'))
+    .join('.');
+  let re;
+  try {
+    re = new RegExp(pattern, 'i');
+  } catch (e) {
+    return list;
+  }
+  return list.filter(item => {
+    const law = Object.values(item)[0] || {};
+    return (
+      re.test(law.lawNameDisplay || '') ||
+      re.test(law.lawDescription || '') ||
+      re.test(law.lawNumber || '')
+    );
+  });
+}
+
 // memo + onOpen ỔN ĐỊNH (thay cho onPress dạng arrow tạo mới ở mỗi lần render).
 // Danh sách kéo-thả render TẤT CẢ card cùng lúc, nên mỗi lần Home re-render
 // (gõ ô tìm kiếm, quay lại màn hình...) React phải dựng lại toàn bộ cây card
 // nếu prop đổi identity. Giữ prop ổn định -> re-render gần như bằng 0.
-const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
+const LawCard = memo(function LawCard({
+  item,
+  onOpen = NOOP,
+  color = null, // màu người dùng chọn (null = mặc định; đổi bằng vuốt phải)
+}) {
   const lawKey = Object.keys(item)[0];
   const law = item[lawKey];
   const isHienPhap = law && law['lawNameDisplay'].match(/^(Hiến)/gim);
@@ -60,7 +130,7 @@ const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
         minHeight: ITEM_HEIGHT,
         justifyContent: 'center',
         paddingVertical: 12,
-        backgroundColor: isHienPhap ? '#da251dff' : colors.primary,
+        backgroundColor: color || (isHienPhap ? '#da251dff' : colors.primary),
       }}
     >
       <View style={styles.item}>
@@ -83,12 +153,93 @@ const LawCard = memo(function LawCard({ item, onOpen = NOOP }) {
   );
 });
 
+/* Một hàng của danh sách kéo-thả: SortableItem (nhấn-giữ-kéo để sắp xếp) bọc
+   SwipeToDelete (vuốt trái để xoá, vuốt phải để đổi màu). Tách component để mỗi hàng có ref cử chỉ
+   vuốt riêng — SortableItem cần ref đó để nhận hai cử chỉ song song, nếu
+   không pan nhấn-giữ của thư viện chặn mất cử chỉ vuốt. */
+function SortableLawRow({
+  itemProps,
+  color,
+  onOpen,
+  onPickColor,
+  onDelete,
+  onDragStart,
+  onDrop,
+}) {
+  const { item, id } = itemProps;
+  const swipeRef = useRef(null);
+  const handleDelete = useCallback(() => onDelete(id), [onDelete, id]);
+  const handlePickColor = useCallback(() => onPickColor(id), [onPickColor, id]);
+  return (
+    <SortableItem
+      {...itemProps}
+      data={item}
+      onDragStart={onDragStart}
+      onDrop={onDrop}
+      simultaneousWithGesture={swipeRef}
+    >
+      {/* GAP ở paddingBottom (đồng đều mọi item -> kéo-thả ổn định):
+          - item ĐẦU tự sát đỉnh (không có khoảng trống phía trên).
+          - giữa các item luôn cách GAP.
+          - item CUỐI dư GAP phía dưới, nhưng được giấu sau tab bar nhờ
+            container nới marginBottom xuống GAP (xem Home). */}
+      <View style={{ paddingBottom: GAP }}>
+        {/* holdBlockMs < 200ms (lúc pan nhấn-giữ-kéo của thư viện kích hoạt):
+            chạm-giữ rồi mới kéo ngang là sắp xếp, không phải vuốt xoá. */}
+        <SwipeToDelete
+          gestureRef={swipeRef}
+          holdBlockMs={180}
+          onDelete={handleDelete}
+          onSwipeRight={handlePickColor}
+        >
+          <LawCard item={item} onOpen={onOpen} color={color} />
+        </SwipeToDelete>
+      </View>
+    </SortableItem>
+  );
+}
+
 export default function Home({}) {
   const navigation = useNavigation();
 
   const [Info, setInfo] = useState(false);
 
-  const [inputSearchLaw, setInputSearchLaw] = useState('');
+  const [inputSearchLaw, setInputSearchLawState] = useState(lastHomeSearch);
+  // Ref luôn giữ chữ đang gõ để callback 'focus' (closure cũ) đọc đúng.
+  const searchRef = useRef(lastHomeSearch);
+  const setInputSearchLaw = useCallback(text => {
+    lastHomeSearch = text;
+    searchRef.current = text;
+    setInputSearchLawState(text);
+  }, []);
+
+  // Màu card theo từng văn bản: { lawKey: '#hex' }
+  const [lawColors, setLawColors] = useState({});
+  const [colorPickerKey, setColorPickerKey] = useState(null);
+  useEffect(() => {
+    readUserJson(LAW_COLORS_FILE, {}).then(c => {
+      if (c && typeof c === 'object') setLawColors(c);
+    });
+  }, []);
+  const openColorPicker = useCallback(lawKey => {
+    Keyboard.dismiss();
+    setColorPickerKey(lawKey);
+  }, []);
+  const chooseColor = useCallback(
+    color => {
+      const key = colorPickerKey;
+      setColorPickerKey(null);
+      if (!key) return;
+      setLawColors(prev => {
+        const next = { ...prev };
+        if (color) next[key] = color;
+        else delete next[key];
+        writeUserJson(LAW_COLORS_FILE, next);
+        return next;
+      });
+    },
+    [colorPickerKey],
+  );
   const [showBackground, setShowBackground] = useState(false);
   const [textInputFocus, setTextInputFocus] = useState(false);
 
@@ -167,23 +318,105 @@ export default function Home({}) {
     [navigation],
   );
 
-  // renderItem của FlatList tìm kiếm: giữ identity ổn định để FlatList không
-  // phải render lại toàn bộ hàng mỗi lần Home re-render.
-  const renderSearchItem = useCallback(
-    ({ item }) => <LawCard item={item} onOpen={openLaw} />,
-    [openLaw],
-  );
 
   // Ref FlatList kết quả tìm kiếm & ref danh sách kéo-thả (SortableLawList).
   const searchListRef = useRef(null);
   const sortableRef = useRef(null);
 
   // Key để remount danh sách kéo-thả khi TẬP DỮ LIỆU đổi (thay cho cơ chế
-  // key = dataHash của <Sortable> gốc): ghép chuỗi id theo đúng thứ tự. Kéo-thả
-  // KHÔNG gọi setData nên không remount -> cuộn tay không bị ảnh hưởng.
-  const sortableKey = useMemo(
-    () => sortableData.map(it => it.id).join('|') + '#' + fontScale,
-    [sortableData, fontScale],
+  // key = dataHash của <Sortable> gốc). Kéo-thả KHÔNG gọi setData nên không
+  // remount -> cuộn tay không bị ảnh hưởng.
+  // Riêng lúc xoá bằng thùng rác thì KHÔNG remount (suppressRemountRef): remount
+  // làm danh sách nhảy về đầu; useSortableListSmooth tự đồng bộ lại vị trí khi
+  // tập id đổi nên các card còn lại trượt lên lấp chỗ trống.
+  const keyStateRef = useRef({ ids: null, epoch: 0 });
+  const suppressRemountRef = useRef(false);
+  const sortableKey = useMemo(() => {
+    const ids = sortableData.map(it => it.id).join('|');
+    const k = keyStateRef.current;
+    if (ids !== k.ids) {
+      if (!suppressRemountRef.current) k.epoch += 1;
+      suppressRemountRef.current = false;
+      k.ids = ids;
+    }
+    return k.epoch + '#' + fontScale;
+  }, [sortableData, fontScale]);
+
+  // Chiều cao vùng nhìn thấy của danh sách: SortableLawList cần biết trước khi
+  // mount (useSortable chốt containerHeight lúc mount để tính auto-scroll).
+  const [listHeight, setListHeight] = useState(0);
+
+  // Bắt đầu nhấn-giữ-kéo để sắp xếp -> đóng card nào đang vuốt mở.
+  const handleDragStart = useCallback(() => {
+    swipeDragLock.value = true; // đang kéo sắp xếp -> không nhận vuốt-xoá
+    Keyboard.dismiss();
+    closeOpenSwipe();
+  }, []);
+
+  // Danh sách gốc mới nhất (Info) cho callback xoá — closure có thể giữ bản cũ.
+  const infoRef = useRef(Info);
+  useEffect(() => {
+    infoRef.current = Info;
+  }, [Info]);
+
+  // ---- Vuốt sang trái để xoá (components/SwipeToDelete) ----
+  // Danh sách kéo-thả KHÔNG remount khi xoá (suppressRemountRef) để không nhảy
+  // về đầu; các card còn lại tự trượt lên lấp chỗ trống.
+  const deleteLaw = useCallback(
+    itemId => {
+      const base = Array.isArray(infoRef.current)
+        ? infoRef.current
+        : dataRef.current;
+      const removed = base.find(it => Object.keys(it)[0] === itemId);
+      const next = base.filter(it => Object.keys(it)[0] !== itemId);
+
+      suppressRemountRef.current = true;
+      infoRef.current = next;
+      dataRef.current = next;
+      setInfo(next);
+      // Đang tìm kiếm thì vẫn giữ kết quả lọc, chỉ bỏ card vừa xoá.
+      setData(filterLaws(next, searchRef.current));
+      setLawColors(prev => {
+        if (prev[itemId] === undefined) return prev;
+        const c = { ...prev };
+        delete c[itemId];
+        return c;
+      });
+
+      // Xoá nội dung, ghi nhớ, màu; ghi lại thứ tự đang hiển thị.
+      deleteDownloadedLaw(itemId).then(() => writeUserJson(ORDER_FILE, next));
+
+      const name = removed && Object.values(removed)[0]?.lawNameDisplay;
+      Toast.show({
+        type: 'copyToast',
+        text1: name ? `Đã xoá: ${name}` : 'Đã xoá văn bản',
+        visibilityTime: 1800,
+        autoHide: true,
+        topOffset: 50 + insets.top,
+      });
+    },
+    [insets.top],
+  );
+
+  // renderItem của FlatList tìm kiếm: giữ identity ổn định để FlatList không
+  // phải render lại toàn bộ hàng mỗi lần Home re-render.
+  const renderSearchItem = useCallback(
+    ({ item }) => {
+      const id = Object.keys(item)[0];
+      return (
+        <SwipeToDelete
+          onDelete={() => deleteLaw(id)}
+          onSwipeRight={() => openColorPicker(id)}
+        >
+          <LawCard
+            item={item}
+            onOpen={openLaw}
+            color={lawColors[id] || null}
+          />
+        </SwipeToDelete>
+      );
+    },
+    [openLaw, lawColors, openColorPicker, deleteLaw],
   );
 
   // Expose global.HomeRef để nhấn lần 2 vào bottom tab "Đã tải xuống" cuộn lên đầu.
@@ -204,60 +437,12 @@ export default function Home({}) {
     };
   }, []);
 
+  // Gõ / xoá chữ -> lọc lại từ danh sách gốc (Info). Xoá hết chữ phải trả
+  // lại đủ danh sách: nếu để data là tập đã lọc thì list kéo-thả chỉ hiện một
+  // phần và thả item sẽ ghi đè order.txt bằng tập con (mất văn bản).
   useEffect(() => {
-    // console.log('Object.keys(Info)', Object.keys(Info).length);
-    // console.log('inputSearchLaw', inputSearchLaw);
-
-    if (inputSearchLaw && Object.keys(Info).length) {
-      // console.log(1);
-
-      setData(
-        Info &&
-          Info.filter(item => {
-            if (
-              inputSearchLaw.match(/(\w+|\(|\)|\.|\+|\-|\,|\&|\?|\;|\!|\s?)/gim)
-            ) {
-              let inputSearchLawReg = inputSearchLaw;
-              if (inputSearchLaw.match(/\(/gim)) {
-                inputSearchLawReg = inputSearchLaw.replace(/\(/gim, '\\(');
-              }
-
-              if (inputSearchLaw.match(/\)/gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\)/gim, '\\)');
-              }
-              if (inputSearchLaw.match(/\//gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\//gim, '.');
-              }
-              if (inputSearchLaw.match(/\\/gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\\/gim, '.');
-              }
-              if (inputSearchLaw.match(/\./gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\./gim, '\\.');
-              }
-              if (inputSearchLaw.match(/\+/gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\+/gim, '\\+');
-              }
-              if (inputSearchLaw.match(/\?/gim)) {
-                inputSearchLawReg = inputSearchLawReg.replace(/\?/gim, '\\?');
-              }
-
-              return (
-                Object.values(item)[0]['lawNameDisplay'].match(
-                  new RegExp(inputSearchLawReg, 'igm'),
-                ) ||
-                Object.values(item)[0]['lawDescription'].match(
-                  new RegExp(inputSearchLawReg, 'igm'),
-                ) ||
-                Object.values(item)[0]['lawNumber'].match(
-                  new RegExp(inputSearchLawReg, 'igm'),
-                )
-              );
-            }
-          }),
-      );
-
-      // DeleteInternal()
-    }
+    if (!Array.isArray(Info)) return;
+    setData(inputSearchLaw ? filterLaws(Info, inputSearchLaw) : Info);
   }, [inputSearchLaw]);
 
   async function getContentExist() {
@@ -282,7 +467,8 @@ export default function Home({}) {
         // console.log('cont',cont);
         if (cont) {
           setInfo(cont.order);
-          setData(cont.order);
+          // Giữ nguyên chữ đang tìm khi quay lại từ màn nghiên cứu.
+          setData(filterLaws(cont.order, searchRef.current));
         } else {
           setInfo({});
           setData([]);
@@ -290,7 +476,6 @@ export default function Home({}) {
       });
 
     const listener = navigation.addListener('focus', () => {
-      setInputSearchLaw('');
       reload();
     });
     // Văn bản tải sẵn (utils/defaultLaws) tải xong khi Home đang mở.
@@ -310,6 +495,7 @@ export default function Home({}) {
 
   // Lưu thứ tự mới khi thả item. allPositions: { id -> vị trí }
   const handleDrop = useCallback((itemId, position, allPositions) => {
+    swipeDragLock.value = false;
     if (!allPositions) return;
 
     const cur = dataRef.current;
@@ -331,22 +517,26 @@ export default function Home({}) {
 
   // renderItem cho danh sách kéo-thả (Sortable)
   const renderSortableItem = useCallback(
-    props => {
-      const { item, id } = props;
-      return (
-        <SortableItem {...props} key={id} data={item} onDrop={handleDrop}>
-          {/* GAP ở paddingBottom (đồng đều mọi item -> kéo-thả ổn định):
-              - item ĐẦU tự sát đỉnh (không có khoảng trống phía trên).
-              - giữa các item luôn cách GAP.
-              - item CUỐI dư GAP phía dưới, nhưng được giấu sau tab bar nhờ
-                container nới marginBottom xuống GAP (xem bên dưới). */}
-          <View style={{ paddingBottom: GAP }}>
-            <LawCard item={item} onOpen={openLaw} />
-          </View>
-        </SortableItem>
-      );
-    },
-    [openLaw, handleDrop],
+    props => (
+      <SortableLawRow
+        key={props.id}
+        itemProps={props}
+        color={lawColors[props.id] || null}
+        onOpen={openLaw}
+        onPickColor={openColorPicker}
+        onDelete={deleteLaw}
+        onDragStart={handleDragStart}
+        onDrop={handleDrop}
+      />
+    ),
+    [
+      openLaw,
+      handleDrop,
+      handleDragStart,
+      deleteLaw,
+      lawColors,
+      openColorPicker,
+    ],
   );
 
   function NoneOfResult() {
@@ -487,7 +677,15 @@ export default function Home({}) {
         // vùng tab bar che. Mỗi item có paddingBottom = GAP, nên khi cuộn tới cuối,
         // mép dưới card cuối nằm sát ĐỈNH tab bar, còn GAP dư (trong suốt) bị tab bar
         // che mất -> không thấy. Item cuối "sát tab bar", item đầu sát đỉnh.
-        <View style={{ flex: 1, marginBottom: tabBarHeight - GAP }}>
+        <View
+          style={{ flex: 1, marginBottom: tabBarHeight - GAP }}
+          onLayout={e => {
+            const h = e.nativeEvent.layout.height;
+            // Chỉ lấy lần đầu: đổi về sau (bàn phím...) mà truyền tiếp thì cũng
+            // không có tác dụng vì useSortable chốt giá trị lúc mount.
+            if (h > 0) setListHeight(prev => prev || Math.round(h));
+          }}
+        >
           {/* Lớp đo ẩn: đo chiều cao thật của mọi card khi chưa đo đủ. Card nằm
               trong luồng layout bình thường nên onLayout chạy ngay khi mount.
               opacity:0 + pointerEvents none + zIndex -1 -> không thấy, không chặn chạm. */}
@@ -523,7 +721,7 @@ export default function Home({}) {
               chiều cao đã đo vào; không dùng enableDynamicHeights (tránh cơ chế tự
               đo của thư viện vốn không kích hoạt onLayout lúc mount).
               useFlatList={false}: render hết item một lần (danh sách luật có hạn). */}
-          {allMeasured && (
+          {allMeasured && listHeight > 0 && (
             <SortableLawList
               key={sortableKey}
               ref={sortableRef}
@@ -532,11 +730,53 @@ export default function Home({}) {
               itemKeyExtractor={keyExtractor}
               itemHeight={getItemHeight}
               estimatedItemHeight={ITEM_HEIGHT + GAP}
-              style={{ flex: 1 }}
+              containerHeight={listHeight}
+              style={SORTABLE_STYLE}
             />
           )}
+
         </View>
       )}
+      <Modal
+        visible={!!colorPickerKey}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setColorPickerKey(null)}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => setColorPickerKey(null)}
+        >
+          <Pressable style={styles.pickerBox} onPress={NOOP}>
+            <Text style={styles.pickerTitle}>Chọn màu cho văn bản</Text>
+            <View style={styles.pickerGrid}>
+              {LAW_COLOR_CHOICES.map(c => {
+                const selected = (lawColors[colorPickerKey] || null) === c;
+                return (
+                  <TouchableOpacity
+                    key={c || 'default'}
+                    onPress={() => chooseColor(c)}
+                    style={[
+                      styles.swatch,
+                      { backgroundColor: c || colors.primary },
+                      selected && styles.swatchSelected,
+                    ]}
+                  >
+                    {selected ? (
+                      <Ionicons name="checkmark" style={styles.swatchIcon} />
+                    ) : !c ? (
+                      <Ionicons name="refresh" style={styles.swatchIcon} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.pickerHint}>
+              Ô có biểu tượng ↻ là màu mặc định
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -556,6 +796,55 @@ const makeStyles = c => ({
     textAlign: 'center',
     fontSize: 17,
     marginBottom: 2,
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: c.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  pickerBox: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    padding: 18,
+    width: '100%',
+    maxWidth: 360,
+  },
+  pickerTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: c.text,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  pickerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  swatch: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    margin: 7,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  swatchSelected: {
+    borderColor: c.text,
+  },
+  swatchIcon: {
+    fontSize: 22,
+    color: '#FFFFFF',
+  },
+  pickerHint: {
+    marginTop: 10,
+    fontSize: 13,
+    color: c.textMuted,
+    textAlign: 'center',
   },
   itemDescription: {
     color: '#EEEEEE',

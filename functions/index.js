@@ -451,17 +451,24 @@ export const askLawAI = onRequest(
 
     try {
       // ── BƯỚC 1: Embed câu hỏi ────────────────────────────────────────
-      // Máy embed nằm sau Cloudflare Tunnel: khi máy chủ đó tắt, Cloudflare trả
-      // 5xx với body TEXT ("error code: 1033"). Vì vậy phải kiểm tra status và
-      // parse thủ công — gọi thẳng .json() sẽ ném SyntaxError kiểu
-      // "Unexpected token 'e' ... is not valid JSON" và lỗi kỹ thuật đó lọt
-      // nguyên văn ra bubble chat của người dùng.
+      // Embed qua OpenRouter, model baai/bge-m3: CÙNG model với Ollama bge-m3
+      // trước đây (1024 chiều, vector đã chuẩn hoá) -> khớp với embedding đã
+      // lưu trong ragdb.chunks, KHÔNG phải embed lại dữ liệu.
+      // ⚠️ Phải đổi ĐỒNG THỜI với lawRNTool/functions/lib/convert.js (embedText):
+      // câu hỏi và chunk phải cùng một model, khác model là tra cứu sai hết.
+      //
+      // Luôn đọc body dạng text rồi tự parse: khi dịch vụ lỗi, body có thể là
+      // TEXT (Cloudflare "error code: 1033"...) -> gọi thẳng .json() sẽ ném
+      // SyntaxError và lỗi kỹ thuật đó lọt nguyên văn ra bubble chat.
       let questionVector = null;
       try {
-        const embedRes = await fetch('https://ollama.pixelplaces.net/api/embed', {
+        const embedRes = await fetch('https://openrouter.ai/api/v1/embeddings', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'bge-m3', input: question }),
+          headers: {
+            Authorization: `${openrouterAPIKey.openrouter_api_key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ model: 'baai/bge-m3', input: question }),
           signal: AbortSignal.timeout(20000),
         });
         const embedBody = await embedRes.text();
@@ -471,7 +478,24 @@ export const askLawAI = onRequest(
           );
         }
         const embedData = JSON.parse(embedBody);
-        questionVector = embedData?.embeddings?.[0];
+        questionVector = embedData?.data?.[0]?.embedding;
+
+        // ── Ollama cũ (máy nhà qua Cloudflare Tunnel) — muốn quay lại thì bỏ
+        // comment đoạn dưới và comment đoạn OpenRouter phía trên:
+        // const embedRes = await fetch('https://ollama.pixelplaces.net/api/embed', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({ model: 'bge-m3', input: question }),
+        //   signal: AbortSignal.timeout(20000),
+        // });
+        // const embedBody = await embedRes.text();
+        // if (!embedRes.ok) {
+        //   throw new Error(
+        //     `embed HTTP ${embedRes.status}: ${embedBody.slice(0, 200)}`,
+        //   );
+        // }
+        // const embedData = JSON.parse(embedBody);
+        // questionVector = embedData?.embeddings?.[0];
       } catch (e) {
         console.error('Embed service lỗi:', e?.message);
         questionVector = null;
@@ -637,6 +661,7 @@ Nhiệm vụ:
 - Trả lời NGẮN GỌN, dễ hiểu.
 - Hãy diễn giải lại bằng ngôn ngữ tự nhiên.
 - Không được bịa số điều, khoản hoặc tên văn bản. Chỉ sử dụng thông tin có trong CONTEXT.
+- Thuật ngữ mà người dùng hỏi phảu nguyên vẹn, không được thay đổi chữ nào.
 
 Khi câu trả lời có căn cứ pháp luật, trình bày theo thứ tự:
 1. Dòng căn cứ: tên văn bản, số văn bản, ngày ký, ngày có hiệu lực.

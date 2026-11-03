@@ -56,6 +56,7 @@ export function useSortableListSmooth({
   itemHeight,
   estimatedItemHeight = 60,
   itemKeyExtractor,
+  containerHeight, // chiều cao THẬT vùng nhìn thấy (thư viện mặc định 500)
 }) {
   const keyExtractor = useMemo(
     () => itemKeyExtractor ?? defaultKeyExtractor,
@@ -159,6 +160,10 @@ export function useSortableListSmooth({
       isDynamicHeight: !isFixedHeight,
       estimatedItemHeight,
       itemHeights: isFixedHeight ? undefined : itemHeightsSV,
+      // Thiếu cái này useSortable dùng 500: auto-scroll khi kéo xuống đáy tính
+      // dư đoạn cuộn (maxScroll = nội dung - 500) nên card đang kéo bị đẩy ra
+      // ngoài vùng vẽ và biến mất (đúng lúc nằm trên thùng rác ở Home).
+      containerHeight,
     }),
     [
       keyExtractor,
@@ -170,6 +175,7 @@ export function useSortableListSmooth({
       itemHeight,
       estimatedItemHeight,
       itemHeightsSV,
+      containerHeight,
     ],
   );
 
