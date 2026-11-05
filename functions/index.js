@@ -451,54 +451,63 @@ export const askLawAI = onRequest(
 
     try {
       // ── BƯỚC 1: Embed câu hỏi ────────────────────────────────────────
-      // Embed qua OpenRouter, model baai/bge-m3: CÙNG model với Ollama bge-m3
-      // trước đây (1024 chiều, vector đã chuẩn hoá) -> khớp với embedding đã
-      // lưu trong ragdb.chunks, KHÔNG phải embed lại dữ liệu.
-      // ⚠️ Phải đổi ĐỒNG THỜI với lawRNTool/functions/lib/convert.js (embedText):
+      // Ưu tiên Ollama bge-m3 (máy nhà qua Cloudflare Tunnel). Nếu link Ollama
+      // hư (tunnel chết 530/1033, timeout, vector rỗng...) thì nhảy sang
+      // OpenRouter baai/bge-m3: CÙNG model (1024 chiều, đã chuẩn hoá) nên vẫn
+      // khớp embedding đã lưu trong ragdb.chunks.
+      // ⚠️ Model phải khớp với lawRNTool/functions/lib/convert.js (embedText):
       // câu hỏi và chunk phải cùng một model, khác model là tra cứu sai hết.
       //
       // Luôn đọc body dạng text rồi tự parse: khi dịch vụ lỗi, body có thể là
       // TEXT (Cloudflare "error code: 1033"...) -> gọi thẳng .json() sẽ ném
       // SyntaxError và lỗi kỹ thuật đó lọt nguyên văn ra bubble chat.
+      const embedVia = async (label, url, init, pick) => {
+        const res = await fetch(url, init);
+        const body = await res.text();
+        if (!res.ok) {
+          throw new Error(`${label} HTTP ${res.status}: ${body.slice(0, 200)}`);
+        }
+        const v = pick(JSON.parse(body));
+        if (!Array.isArray(v) || !v.length) {
+          throw new Error(`${label} trả vector rỗng: ${body.slice(0, 200)}`);
+        }
+        return v;
+      };
+
       let questionVector = null;
       try {
-        const embedRes = await fetch('https://openrouter.ai/api/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            Authorization: `${openrouterAPIKey.openrouter_api_key}`,
-            'Content-Type': 'application/json',
+        questionVector = await embedVia(
+          'Ollama',
+          'https://ollama.pixelplaces.net/api/embed',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'bge-m3', input: question }),
+            signal: AbortSignal.timeout(15000),
           },
-          body: JSON.stringify({ model: 'baai/bge-m3', input: question }),
-          signal: AbortSignal.timeout(20000),
-        });
-        const embedBody = await embedRes.text();
-        if (!embedRes.ok) {
-          throw new Error(
-            `embed HTTP ${embedRes.status}: ${embedBody.slice(0, 200)}`,
-          );
-        }
-        const embedData = JSON.parse(embedBody);
-        questionVector = embedData?.data?.[0]?.embedding;
-
-        // ── Ollama cũ (máy nhà qua Cloudflare Tunnel) — muốn quay lại thì bỏ
-        // comment đoạn dưới và comment đoạn OpenRouter phía trên:
-        // const embedRes = await fetch('https://ollama.pixelplaces.net/api/embed', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ model: 'bge-m3', input: question }),
-        //   signal: AbortSignal.timeout(20000),
-        // });
-        // const embedBody = await embedRes.text();
-        // if (!embedRes.ok) {
-        //   throw new Error(
-        //     `embed HTTP ${embedRes.status}: ${embedBody.slice(0, 200)}`,
-        //   );
-        // }
-        // const embedData = JSON.parse(embedBody);
-        // questionVector = embedData?.embeddings?.[0];
+          d => d?.embeddings?.[0],
+        );
       } catch (e) {
-        console.error('Embed service lỗi:', e?.message);
-        questionVector = null;
+        console.error('Embed Ollama lỗi, chuyển sang OpenRouter:', e?.message);
+        try {
+          questionVector = await embedVia(
+            'OpenRouter',
+            'https://openrouter.ai/api/v1/embeddings',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `${openrouterAPIKey.openrouter_api_key}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ model: 'baai/bge-m3', input: question }),
+              signal: AbortSignal.timeout(20000),
+            },
+            d => d?.data?.[0]?.embedding,
+          );
+        } catch (e2) {
+          console.error('Embed OpenRouter cũng lỗi:', e2?.message);
+          questionVector = null;
+        }
       }
       if (!Array.isArray(questionVector) || !questionVector.length) {
         // Không embed được thì không thể tra cứu -> báo bằng lời người dùng hiểu
