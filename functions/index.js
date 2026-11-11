@@ -934,23 +934,29 @@ export const getLawAIAnswer = onRequest(async (req, res) => {
 // Nguồn cấu hình cập nhật cho app. Doc Mongo LawMachine.AppConfig, _id = 'update':
 //   {
 //     _id: 'update',
-//     forceUpdate: false,           // BẠN set tay: true -> app cũ hơn bị CHẶN, không thoát
-//     shouldUpdate: true,           // BẠN set tay: true -> nhắc mềm (vẫn dùng/tắt được)
-//     latestVersionAndroid: '2.94', // TỰ ĐỘNG: app Android ghi lên từ getLatestVersion()
-//     latestVersioniOS: '2.960',    // TỰ ĐỘNG: app iOS ghi lên từ getLatestVersion()
-//     message: ''                   // (tuỳ chọn) lời nhắn hiển thị
+//     forceUpdate: false,                // ADMIN: true -> app cũ hơn bản khuyến nghị bị CHẶN
+//     shouldUpdate: true,                // ADMIN: true -> nhắc mềm (vẫn dùng/tắt được)
+//     recommendedVersionAndroid: '2.94', // ADMIN: bản Android khuyến nghị
+//     recommendedVersioniOS: '2.960',    // ADMIN: bản iOS khuyến nghị
+//     message: ''                        // ADMIN (tuỳ chọn): nội dung khung nhắc; trống = câu mặc định
 //   }
-// latestVersion* được app cập nhật qua endpoint reportLatestVersion (bên dưới).
-// Thiếu doc -> trả mặc định "không làm gì" để không chặn nhầm người dùng.
+// Mọi field do admin sửa (lawRNTool ▸ AppConfig); app chỉ ĐỌC, không ghi lên nữa.
+// App chỉ nhắc/chặn khi version của nó < recommendedVersion* của nền tảng đó;
+// để trống = không nhắc. Thiếu doc -> trả mặc định "không làm gì".
 export const appConfig = onRequest(async (req, res) => {
   try {
     const col = client.db('LawMachine').collection('AppConfig');
     const doc = await col.findOne({ _id: 'update' });
+    const androidVer = String(doc?.recommendedVersionAndroid ?? '').trim();
+    const iosVer = String(doc?.recommendedVersioniOS ?? '').trim();
     res.json({
       forceUpdate: doc?.forceUpdate === true,
       shouldUpdate: doc?.shouldUpdate === true,
-      latestVersionAndroid: doc?.latestVersionAndroid ?? '',
-      latestVersioniOS: doc?.latestVersioniOS ?? '',
+      recommendedVersionAndroid: androidVer,
+      recommendedVersioniOS: iosVer,
+      // Tương thích app bản cũ (đọc latestVersion* khi Store trả rỗng).
+      latestVersionAndroid: androidVer,
+      latestVersioniOS: iosVer,
       message: doc?.message ?? '',
     });
   } catch (e) {
@@ -959,64 +965,11 @@ export const appConfig = onRequest(async (req, res) => {
     res.json({
       forceUpdate: false,
       shouldUpdate: false,
+      recommendedVersionAndroid: '',
+      recommendedVersioniOS: '',
       latestVersionAndroid: '',
       latestVersioniOS: '',
       message: '',
     });
-  }
-});
-
-// So sánh version "1.2.3"/"13". Trả <0 nếu a cũ hơn b, >0 nếu a mới hơn.
-function cmpVersion(a, b) {
-  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0);
-    if (d !== 0) return d < 0 ? -1 : 1;
-  }
-  return 0;
-}
-
-// ─── reportLatestVersion (GHI) ───────────────────────────────────────────────
-// App gọi lúc khởi động với version mới nhất nó đọc được từ Store (getLatestVersion),
-// để đồng bộ latestVersionAndroid/iOS trong config. KHÔNG đụng tới cờ force/should.
-// Body: { platform: 'ios'|'android', version: '2.95' }
-// Chốt an toàn: chỉ nhận version đúng định dạng, và CHỈ ghi khi cao hơn giá trị
-// đang lưu (tránh máy cào lỗi kéo tụt mốc).
-export const reportLatestVersion = onRequest(async (req, res) => {
-  try {
-    if (req.method !== 'POST') {
-      res.status(405).json({ ok: false, error: 'POST only' });
-      return;
-    }
-    const platform = req.body?.platform;
-    const version = String(req.body?.version || '').trim();
-    const field =
-      platform === 'ios'
-        ? 'latestVersioniOS'
-        : platform === 'android'
-        ? 'latestVersionAndroid'
-        : null;
-    if (!field || !/^\d+(\.\d+){0,3}$/.test(version)) {
-      res.status(400).json({ ok: false, error: 'invalid platform/version' });
-      return;
-    }
-    const col = client.db('LawMachine').collection('AppConfig');
-    const doc = await col.findOne({ _id: 'update' });
-    const cur = doc?.[field] || '';
-    let updated = false;
-    if (!cur || cmpVersion(version, cur) > 0) {
-      await col.updateOne(
-        { _id: 'update' },
-        { $set: { [field]: version } },
-        { upsert: true },
-      );
-      updated = true;
-    }
-    res.json({ ok: true, field, version, updated });
-  } catch (e) {
-    console.error('reportLatestVersion error:', e);
-    res.status(500).json({ ok: false, error: e.message });
   }
 });

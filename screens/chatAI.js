@@ -337,6 +337,8 @@ export const AIChatScreen = () => {
     consumeTrial,
   } = useSubscription();
   const [paywallVisible, setPaywallVisible] = useState(false);
+  // Mở Paywall sau khi drawer (Modal) đóng hẳn — xem onClosed của drawer.
+  const pendingPaywallRef = useRef(false);
   // Ref để streamAIResponse luôn đọc được trạng thái premium mới nhất
   // mà không cần đưa isPremium vào dependency của useCallback.
   const isPremiumRef = useRef(isPremium);
@@ -1555,8 +1557,16 @@ try {
         trialRemaining={trialRemaining}
         trialTotal={trialTotal}
         onUpgrade={() => {
+          // Không mở Paywall ngay: trên iOS Modal của drawer còn đang đóng thì
+          // Paywall không present được và màn hình bị đơ. Đợi onClosed.
+          pendingPaywallRef.current = true;
           setDrawerOpen(false);
-          setPaywallVisible(true);
+        }}
+        onClosed={() => {
+          if (pendingPaywallRef.current) {
+            pendingPaywallRef.current = false;
+            setPaywallVisible(true);
+          }
         }}
         history={history}
         activeId={activeConvId}

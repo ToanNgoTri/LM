@@ -54,6 +54,7 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   trialRemaining,
   trialTotal,
   onUpgrade,
+  onClosed,
   history,
   activeId,
   onSelect,
@@ -72,6 +73,22 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   const dragX = useRef(new Animated.Value(0)).current; // <= 0 khi vuốt đóng
   const [query, setQuery] = useState('');
 
+  // Báo ra ngoài khi Modal đã đóng hẳn. iOS không present được Modal khác
+  // (vd. Paywall) khi Modal này còn đang hiện/đang dismiss -> Modal mới bị bỏ
+  // qua và lớp trong suốt chặn chạm làm cả màn hình đơ. Nên phải đợi
+  // onDismiss (iOS) rồi mới mở Modal tiếp theo.
+  const onClosedRef = useRef(onClosed);
+  onClosedRef.current = onClosed;
+  const closedFiredRef = useRef(true);
+  const fallbackRef = useRef(null);
+  const fireClosed = () => {
+    clearTimeout(fallbackRef.current);
+    if (closedFiredRef.current) return;
+    closedFiredRef.current = true;
+    onClosedRef.current?.();
+  };
+  useEffect(() => () => clearTimeout(fallbackRef.current), []);
+
   // Lọc lịch sử theo tiêu đề + nội dung tin nhắn.
   const filtered = useMemo(() => {
     const q = fold(query.trim());
@@ -85,6 +102,8 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
 
   useEffect(() => {
     if (visible) {
+      clearTimeout(fallbackRef.current);
+      closedFiredRef.current = false;
       setMounted(true);
       dragX.setValue(0);
       setQuery('');
@@ -100,7 +119,16 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
         duration: OPEN_MS - 40,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
-      }).start(({ finished }) => finished && setMounted(false));
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setMounted(false);
+        if (Platform.OS === 'ios') {
+          // Chờ onDismiss; dự phòng nếu vì lý do nào đó nó không bắn.
+          fallbackRef.current = setTimeout(fireClosed, 600);
+        } else {
+          setTimeout(fireClosed, 0);
+        }
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -129,7 +157,9 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
     }),
   ).current;
 
-  if (!mounted) return null;
+  // Giữ component Modal sống với visible={false} để iOS bắn onDismiss khi
+  // đóng xong (unmount thẳng thì không có onDismiss).
+  if (!mounted && closedFiredRef.current) return null;
 
   // Modal là một cửa sổ riêng: trên Android insets.top ở đây có thể thiếu
   // thanh trạng thái -> lấy chiều cao thanh trạng thái làm mức tối thiểu.
@@ -171,11 +201,12 @@ export const ChatHistoryDrawer = memo(function ChatHistoryDrawer({
   return (
     <Modal
       transparent
-      visible
+      visible={mounted}
       animationType="none"
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onClose}
+      onDismiss={fireClosed}
     >
       {/* Nền mờ (chỉ để nhìn) + lớp chạm trong suốt phủ cả màn hình: chạm vào
           phần bên cạnh drawer là đóng. Kích thước ghi rõ theo màn hình: view gốc

@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { Text, ThemeProvider, useTheme } from './theme';
 import { PolicyParagraphs } from './screens/components/PolicyContent';
-import { compareVersion, openStore } from './utils/appInfo';
+import { compareVersion, fetchUpdateConfig, openStore } from './utils/appInfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -104,18 +104,13 @@ const ToastCustom = ({ text1, text2 }) => {
   );
 };
 
-// Endpoint cấu hình cập nhật (Mongo LawMachine.AppConfig, _id='update') —
-// thay việc gọi Store qua react-native-version-check để quyết định update.
-const APP_CONFIG_URL =
-  'https://us-central1-project2-197c0.cloudfunctions.net/appConfig';
-const REPORT_VERSION_URL =
-  'https://us-central1-project2-197c0.cloudfunctions.net/reportLatestVersion';
-
 function AppContent() {
   const { colors } = useTheme();
   const [updateStatus, SetUpdateStatus] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(false);
-  // latestVersion lấy từ appConfig, dùng lại trong nút Thoát/Chấp nhận (không gọi Store).
+  // Lời nhắn admin đặt trong AppConfig.message; trống -> dùng câu mặc định.
+  const [updateMessage, setUpdateMessage] = useState('');
+  // latestVersion = bản admin khuyến nghị (appConfig), dùng lại trong nút Thoát/Chấp nhận (không gọi Store).
   const latestVersionRef = useRef('0');
   const [showPolicy, setShowPolicy] = useState(false);
   const [heightNotification, setHeightNotification] = useState(0);
@@ -155,57 +150,31 @@ function AppContent() {
     try {
       // Phiên bản hiện tại đọc từ chính app.
       const currentVersion = VersionCheck.getCurrentVersion();
-      const platform = Platform.OS === 'ios' ? 'ios' : 'android';
 
-      // Version mới nhất đọc từ Store theo nền tảng (iOS: iTunes; Android: Play).
-      let storeVersion = '';
-      try {
-        storeVersion = String((await VersionCheck.getLatestVersion()) || '');
-      } catch (e) {
-        console.log('getLatestVersion error', e);
-      }
-
-      // Đồng bộ số này lên config Mongo (fire-and-forget, lỗi bỏ qua).
-      // Backend chỉ ghi khi version cao hơn giá trị đang lưu.
-      if (storeVersion) {
-        fetch(REPORT_VERSION_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ platform, version: storeVersion }),
-        }).catch(() => {});
-      }
-
-      // Cấu hình từ backend: cờ force/should (BẠN quyết định) + mốc version đã lưu.
-      const res = await fetch(APP_CONFIG_URL, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      const cfg = await res.json();
-
-      const configVersion = String(
-        (platform === 'ios' ? cfg?.latestVersioniOS : cfg?.latestVersionAndroid) || '',
-      );
-
-      // So sánh dùng số Store vừa đọc; nếu Store trả rỗng thì dùng mốc trong config.
-      const latestVersion = storeVersion || configVersion;
+      // Mốc version + cờ force/should đều do ADMIN đặt trong AppConfig.
+      // Không đọc Store, không gửi version của máy lên Mongo.
+      const cfg = await fetchUpdateConfig();
+      const latestVersion = cfg.recommendedVersion;
       latestVersionRef.current = latestVersion;
 
-      // Không biết được bản mới nhất -> KHÔNG chặn (tránh khóa nhầm người dùng).
+      // Admin chưa đặt bản khuyến nghị -> KHÔNG nhắc/chặn.
       if (!latestVersion) return;
 
-      // Chỉ nhắc/chặn khi app đang CŨ hơn bản mới nhất.
+      // Chỉ nhắc/chặn khi app đang CŨ hơn bản khuyến nghị.
       const outdated = compareVersion(currentVersion, latestVersion) < 0;
       if (!outdated) return;
 
+      setUpdateMessage(String(cfg.message || '').trim());
+
       // forceUpdate: chặn cứng — không cho thoát, không phụ thuộc Appear.txt.
-      if (cfg?.forceUpdate === true) {
+      if (cfg.forceUpdate) {
         setForceUpdate(true);
         SetUpdateStatus(true);
         return;
       }
 
       // shouldUpdate: nhắc mềm — vẫn tôn trọng lựa chọn "đã tắt" theo từng phiên bản.
-      if (cfg?.shouldUpdate === true) {
+      if (cfg.shouldUpdate) {
         const contentAppear = await readUserJson(APPEAR_FILE, null);
         const dismissed = !!(contentAppear && contentAppear[latestVersion]);
         if (!dismissed) SetUpdateStatus(true);
@@ -410,9 +379,8 @@ function AppContent() {
                             paddingHorizontal: 24,
                           }}
                         >
-                          Sổ Tay Luật đã có phiên bản mới với nhiều cải tiến và
-                          tính năng hữu ích. Bạn nên cập nhật để có trải nghiệm
-                          tốt nhất.
+                          {updateMessage ||
+                            'Sổ Tay Luật đã có phiên bản mới với nhiều cải tiến và tính năng hữu ích. Bạn nên cập nhật để có trải nghiệm tốt nhất.'}
                         </Text>
                       </ScrollView>
                     )}

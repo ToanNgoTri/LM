@@ -29,6 +29,7 @@ import {
   PRIVACY_URL,
   TERMS_URL,
   compareVersion,
+  fetchUpdateConfig,
   openStore,
   openUrl,
 } from '../utils/appInfo';
@@ -144,8 +145,13 @@ export function Settings() {
   const checkUpdate = async () => {
     setUpdateState('checking');
     try {
-      const latest = String((await VersionCheck.getLatestVersion()) || '');
-      if (!latest) throw new Error('empty');
+      // So với bản admin khuyến nghị (AppConfig), không đọc Store.
+      // Admin chưa đặt -> coi như đang ở bản mới nhất.
+      const latest = (await fetchUpdateConfig()).recommendedVersion;
+      if (!latest) {
+        setUpdateState('latest');
+        return;
+      }
       setLatestVersion(latest);
       setUpdateState(
         compareVersion(currentVersion, latest) < 0 ? 'outdated' : 'latest',

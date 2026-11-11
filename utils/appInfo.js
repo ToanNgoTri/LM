@@ -31,3 +31,29 @@ export function compareVersion(a, b) {
   }
   return 0;
 }
+
+// Cấu hình cập nhật do ADMIN đặt (Mongo LawMachine.AppConfig, _id='update',
+// sửa qua lawRNTool ▸ AppConfig). App KHÔNG còn đọc version mới nhất từ Store
+// và KHÔNG gửi version lên Mongo nữa — chỉ nhắc khi cũ hơn bản admin khuyến nghị.
+const APP_CONFIG_URL =
+  'https://us-central1-project2-197c0.cloudfunctions.net/appConfig';
+
+// Trả { recommendedVersion, forceUpdate, shouldUpdate, message } theo nền tảng.
+// recommendedVersion = '' khi admin chưa đặt -> nơi gọi KHÔNG được nhắc/chặn.
+export async function fetchUpdateConfig() {
+  const res = await fetch(APP_CONFIG_URL, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  const cfg = await res.json();
+  return {
+    recommendedVersion: String(
+      (Platform.OS === 'ios'
+        ? cfg?.recommendedVersioniOS
+        : cfg?.recommendedVersionAndroid) || '',
+    ).trim(),
+    forceUpdate: cfg?.forceUpdate === true,
+    shouldUpdate: cfg?.shouldUpdate === true,
+    message: cfg?.message || '',
+  };
+}
