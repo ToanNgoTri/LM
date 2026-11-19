@@ -15,6 +15,7 @@ import {
   Vibration,
   Platform,
   LayoutAnimation,
+  InteractionManager,
 } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -658,6 +659,13 @@ export function Detail5() {
   const { loading } = useSelector(state => state['read']);
   // console.log('loading',loading);
 
+  // Đang đọc văn bản đã tải về từ máy (file JSON lớn, vd Bộ luật Hình sự):
+  // JSON.parse + vẽ hàng nghìn View chặn JS vài giây -> phải hiện overlay
+  // loading TRƯỚC rồi mới đọc (redux `loading` chỉ bật khi tải qua mạng).
+  const [localLoading, setLocalLoading] = useState(true);
+  // nguồn nội dung: null = chưa biết, 'local' = bản đã tải, 'remote' = gọi mạng
+  const [contentSource, setContentSource] = useState(null);
+
 
   async function callOneLaw() {
     // dùng để khi qua screen related Law khác khi quay về vẫn còn
@@ -678,12 +686,25 @@ export function Detail5() {
   }
 
   useEffect(() => {
-    callOneLaw().then(res => {
-      setContent(res.content);
-      setInfo(res.info || {});
-      setTables(indexTables(res.tables));
-    });
-  }, [loading]);
+    // Bản đã tải về: không gọi mạng nữa (trước đây vẫn gọi -> vẽ lại toàn bộ
+    // văn bản lớn lần 2 khi mạng trả về).
+    if (contentSource !== 'remote') return;
+    callOneLaw()
+      .then(res => {
+        setContent(res.content);
+        setInfo(res.info || {});
+        setTables(indexTables(res.tables));
+      })
+      .catch(() => {});
+  }, [loading, contentSource]);
+
+  // Tắt overlay khi nội dung bản tải về đã commit (effect chạy SAU lần vẽ nặng).
+  useEffect(() => {
+    if (localLoading && contentSource === 'local' && Content && Content.length) {
+      const t = setTimeout(() => setLocalLoading(false), 0);
+      return () => clearTimeout(t);
+    }
+  }, [Content, contentSource, localLoading]);
 
   useEffect(() => {
     if (!exists) {
@@ -696,18 +717,39 @@ export function Detail5() {
   }
 
   useEffect(() => {
-    getContentExist().then(cont => {
-      // console.log('cont',cont);
-
-      if (cont && Object.keys(cont.all).includes(route.params.screen)) {
-        setInfo(cont.all[route.params.screen].Info || {});
-        // bản tải về bằng app cũ không có Tables -> bảng hiện như text như trước
-        setTables(indexTables(cont.all[route.params.screen].Tables));
-        setContent(cont.all[route.params.screen].Content);
-      } else {
-        setExists(true);
-        dispatch({ type: 'read', lawName: route.params.screen });
-      }
+    let cancelled = false;
+    // Chờ chuyển màn xong + 1 khung hình để overlay loading kịp vẽ ra, rồi mới
+    // đọc/parse file (nếu đọc ngay, JS bị chặn -> màn hình trắng, không spinner).
+    let readTimer;
+    const task = InteractionManager.runAfterInteractions(() => {
+      readTimer = setTimeout(() => {
+        getContentExist()
+          .then(cont => {
+            if (cancelled) return;
+            const law =
+              cont && cont.all ? cont.all[route.params.screen] : undefined;
+            if (law) {
+              const content = law.Content;
+              setInfo(law.Info || {});
+              // bản tải về bằng app cũ không có Tables -> bảng hiện như text như trước
+              setTables(indexTables(law.Tables));
+              setContent(content || []);
+              setContentSource('local');
+              if (!content || !content.length) setLocalLoading(false);
+            } else {
+              setContentSource('remote');
+              setLocalLoading(false);
+              setExists(true);
+              dispatch({ type: 'read', lawName: route.params.screen });
+            }
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setContentSource('remote');
+            setLocalLoading(false);
+            dispatch({ type: 'read', lawName: route.params.screen });
+          });
+      }, 50);
     });
 
     Animated.timing(animatedForNavi, {
@@ -731,6 +773,9 @@ export function Detail5() {
     }
 
     return () => {
+      cancelled = true;
+      task.cancel();
+      clearTimeout(readTimer);
       eachSectionWithChapter = [];
     };
   }, []);
@@ -1606,7 +1651,7 @@ export function Detail5() {
 
   return (
     <View style={{ flex: 1, position: 'relative' }}>
-      {loading && (
+      {(loading || localLoading) && (
         <View
           style={{
             position: 'absolute',
