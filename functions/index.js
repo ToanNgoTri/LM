@@ -2,6 +2,10 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { MongoClient } from 'mongodb';
 
 import openrouterAPIKey from './openrouterAPIKey.json' with { type: "json" } ;
+// { "key": "..." } = secret API_KEY của Worker law-embed (gitignored, như openrouterAPIKey.json)
+import embedWorkerKey from './embedWorkerKey.json' with { type: "json" } ;
+
+const EMBED_WORKER_URL = 'https://law-embed.lawmachine.workers.dev/api/embed';
 
 // Mongo metadata (LawCollection, LawSearchContent, LawSearchDescription).
 const client = new MongoClient(
@@ -451,10 +455,11 @@ export const askLawAI = onRequest(
 
     try {
       // ── BƯỚC 1: Embed câu hỏi ────────────────────────────────────────
-      // Ưu tiên Ollama bge-m3 (máy nhà qua Cloudflare Tunnel). Nếu link Ollama
-      // hư (tunnel chết 530/1033, timeout, vector rỗng...) thì nhảy sang
-      // OpenRouter baai/bge-m3: CÙNG model (1024 chiều, đã chuẩn hoá) nên vẫn
-      // khớp embedding đã lưu trong ragdb.chunks.
+      // Ưu tiên Cloudflare Worker `law-embed` (Workers AI @cf/baai/bge-m3, code
+      // ở lawRNTool/embed-worker/, cần header x-key). Worker lỗi (timeout 3046,
+      // hết hạn mức ngày, sự cố...) thì nhảy sang OpenRouter baai/bge-m3. Cả hai
+      // CÙNG model bge-m3 (1024 chiều, cos = 1.0000 so với vector đã lưu) nên
+      // vẫn khớp embedding trong ragdb.chunks.
       // ⚠️ Model phải khớp với lawRNTool/functions/lib/convert.js (embedText):
       // câu hỏi và chunk phải cùng một model, khác model là tra cứu sai hết.
       //
@@ -477,18 +482,21 @@ export const askLawAI = onRequest(
       let questionVector = null;
       try {
         questionVector = await embedVia(
-          'Ollama',
-          'https://ollama.pixelplaces.net/api/embed',
+          'Worker',
+          EMBED_WORKER_URL,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-key': embedWorkerKey.key,
+            },
             body: JSON.stringify({ model: 'bge-m3', input: question }),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(10000),
           },
           d => d?.embeddings?.[0],
         );
       } catch (e) {
-        console.error('Embed Ollama lỗi, chuyển sang OpenRouter:', e?.message);
+        console.error('Embed Worker lỗi, chuyển sang OpenRouter:', e?.message);
         try {
           questionVector = await embedVia(
             'OpenRouter',
@@ -594,9 +602,11 @@ export const askLawAI = onRequest(
         };
       });
 
-      // Loại văn bản CHƯA có hiệu lực (nếu loại xong vẫn còn dữ liệu).
-      const effective = cands.filter(c => !c.notYetEffective);
-      if (effective.length) cands = effective;
+      // Văn bản CHƯA có hiệu lực KHÔNG bị loại nữa: có câu hỏi chỉ văn bản
+      // sắp có hiệu lực mới trả lời được (vd NĐ 417/2026 về hệ thống hải quan
+      // thương mại điện tử, hiệu lực 01/03/2027). Chúng chỉ bị xếp SAU văn bản
+      // đang có hiệu lực khi đúng ngang nhau, và được ghi nhãn trong CONTEXT để
+      // LLM nói rõ ngày bắt đầu có hiệu lực.
 
       // Chia "bậc đúng": mỗi bậc rộng SEMANTIC_TIE tính từ chunk giống nhất.
       // Cùng bậc = đúng ngang nhau -> lúc đó mới so ngày hiệu lực.
@@ -605,9 +615,11 @@ export const askLawAI = onRequest(
         c.tier = Math.floor((topSemantic - c.semantic) / SEMANTIC_TIE);
       }
 
-      // So sánh: (1) bậc đúng, (2) ngày hiệu lực mới nhất, (3) semantic thô.
+      // So sánh: (1) bậc đúng, (2) đang có hiệu lực trước chưa có hiệu lực,
+      // (3) ngày hiệu lực mới nhất, (4) semantic thô.
       const byRelevanceThenRecency = (a, b) => {
         if (a.tier !== b.tier) return a.tier - b.tier;
+        if (a.notYetEffective !== b.notYetEffective) return a.notYetEffective ? 1 : -1;
         const ta = Number.isNaN(a.recencyT) ? 0 : a.recencyT;
         const tb = Number.isNaN(b.recencyT) ? 0 : b.recencyT;
         if (tb !== ta) return tb - ta;
@@ -652,7 +664,7 @@ export const askLawAI = onRequest(
         .map(
           (c, i) =>
             // Không bọc [ ] quanh đoạn: model hay chép nguyên dấu ngoặc ra câu trả lời.
-            `ĐOẠN ${i + 1}\nSố văn bản: ${c.data.lawId}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))}, có hiệu lực ngày ${fmt(c.activeT)}\n${c.data.fullText}`,
+            `ĐOẠN ${i + 1}\nSố văn bản: ${c.data.lawId}\nVăn bản ký ngày ${fmt(toTime(c.data.lawdateSign))}, có hiệu lực ngày ${fmt(c.activeT)}${c.notYetEffective ? `\nCHƯA CÓ HIỆU LỰC: văn bản này bắt đầu có hiệu lực từ ngày ${fmt(c.activeT)}.` : ''}\n${c.data.fullText}`,
         )
         .join('\n\n');
 
@@ -671,6 +683,11 @@ Nhiệm vụ:
 - Hãy diễn giải lại bằng ngôn ngữ tự nhiên.
 - Không được bịa số điều, khoản hoặc tên văn bản. Chỉ sử dụng thông tin có trong CONTEXT.
 - Thuật ngữ mà người dùng hỏi phảu nguyên vẹn, không được thay đổi chữ nào.
+- Đoạn nào ghi "CHƯA CÓ HIỆU LỰC" là văn bản chưa có hiệu lực tại thời điểm hỏi.
+  Nếu trả lời bằng văn bản đó thì BẮT BUỘC nói rõ văn bản chưa có hiệu lực và
+  ngày bắt đầu có hiệu lực (vd: "Nghị định này có hiệu lực từ ngày 01/03/2027").
+  Nếu có văn bản đang có hiệu lực điều chỉnh cùng vấn đề thì trình bày văn bản
+  đang có hiệu lực trước, rồi mới nêu quy định sắp có hiệu lực.
 
 Khi câu trả lời có căn cứ pháp luật, trình bày theo thứ tự:
 1. Dòng căn cứ: tên văn bản, số văn bản, ngày ký, ngày có hiệu lực.
